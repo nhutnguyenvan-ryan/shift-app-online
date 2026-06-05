@@ -110,6 +110,13 @@
           </div>
           <button class="btn-template" onclick="downloadInflowTemplate()">⬇ Template</button>
         </div>
+        <!-- Google Sheets input -->
+        <div class="sheet-row">
+          <span class="sheet-icon">📊</span>
+          <input type="url" id="sheetUrlInflow" class="sheet-input" placeholder="Paste Google Sheets URL (phải Share → Anyone with the link)">
+          <button class="btn-sheet" onclick="fetchSheetData('inflow')">Fetch</button>
+        </div>
+        <div class="sheet-divider"><span>hoặc upload file</span></div>
         <div class="drop-zone" id="zone-inflow"
           onclick="document.getElementById('file-inflow').click()"
           ondragover="dragOver(event,'zone-inflow')" ondragleave="dragLeave('zone-inflow')" ondrop="dropFile(event,'inflow')">
@@ -131,6 +138,13 @@
           </div>
           <button class="btn-template" onclick="downloadEnqueueTemplate()">⬇ Template</button>
         </div>
+        <!-- Google Sheets input -->
+        <div class="sheet-row">
+          <span class="sheet-icon">📊</span>
+          <input type="url" id="sheetUrlEnqueue" class="sheet-input" placeholder="Paste Google Sheets URL (optional)">
+          <button class="btn-sheet" onclick="fetchSheetData('enqueue')">Fetch</button>
+        </div>
+        <div class="sheet-divider"><span>hoặc upload file</span></div>
         <div class="drop-zone" id="zone-enqueue"
           onclick="document.getElementById('file-enqueue').click()"
           ondragover="dragOver(event,'zone-enqueue')" ondragleave="dragLeave('zone-enqueue')" ondrop="dropFile(event,'enqueue')">
@@ -147,6 +161,7 @@
 
     <div class="data-actions">
       <button class="btn-run" onclick="applyAndRun()">▶ Apply & Run</button>
+      <button class="btn-outline" onclick="refreshAllSheets()">🔄 Refresh từ Sheets</button>
       <button class="btn-outline" onclick="useSampleData()">Use sample data</button>
       <span id="applyStatus" class="apply-status"></span>
     </div>

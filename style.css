@@ -288,6 +288,19 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14
 .pivot-week tr.pw-hour:hover td,.pivot-week tr.pw-hour:hover .pw-label-col{background:var(--bg3)}
 .pivot-week .pw-hour-label{font-family:var(--mono);font-size:11px;color:var(--text3)}
 
+/* ── GOOGLE SHEETS ROW ── */
+.sheet-row{display:flex;align-items:center;gap:8px;padding:10px 16px 0;margin-bottom:2px}
+.sheet-icon{font-size:16px;flex-shrink:0}
+.sheet-input{flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);
+  color:var(--text);padding:6px 10px;font-size:12px;font-family:var(--sans);outline:none;min-width:0}
+.sheet-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+.sheet-input::placeholder{color:var(--text3)}
+.btn-sheet{padding:6px 14px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-size:12px;font-weight:600;
+  background:var(--accent);color:#fff;transition:opacity .15s;flex-shrink:0;font-family:var(--sans)}
+.btn-sheet:hover{opacity:.85}
+.sheet-divider{display:flex;align-items:center;gap:8px;padding:8px 16px;color:var(--text3);font-size:11px}
+.sheet-divider::before,.sheet-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
 /* ── UTILS ── */
 .hidden{display:none!important}
 @media(max-width:900px){

@@ -72,7 +72,9 @@ async function saveConfig() {
     aht: document.getElementById('ahtInput').value,
     util: document.getElementById('utilInput').value,
     target: document.getElementById('targetCov').value,
-    inflowData, enqueueData
+    inflowData, enqueueData,
+    sheetUrlInflow: window._sheetUrlInflow||'',
+    sheetUrlEnqueue: window._sheetUrlEnqueue||''
   };
   await fetch('/api/config', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -91,6 +93,8 @@ async function loadSharedConfig() {
   if (config.target) document.getElementById('targetCov').value = config.target;
   if (config.inflowData) inflowData = config.inflowData;
   if (config.enqueueData) enqueueData = config.enqueueData;
+  if (config.sheetUrlInflow){window._sheetUrlInflow=config.sheetUrlInflow;const el=document.getElementById('sheetUrlInflow');if(el)el.value=config.sheetUrlInflow;}
+  if (config.sheetUrlEnqueue){window._sheetUrlEnqueue=config.sheetUrlEnqueue;const el=document.getElementById('sheetUrlEnqueue');if(el)el.value=config.sheetUrlEnqueue;}
   updateDerived();
   if (Object.keys(inflowData).length) {
     setStatus('inflow', `✅ Loaded ${Object.keys(inflowData).length} days from saved config`, 'ok');
@@ -228,6 +232,47 @@ function downloadCSV(content, filename) {
   const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(content); a.download=filename; a.click();
 }
 
+// ── GOOGLE SHEETS IMPORT ──────────────────────────────────────────────────────
+// Converts various Sheets URL formats to CSV export URL
+function sheetsToCSV(url, sheetName){
+  let id='';
+  const m=url.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if(m)id=m[1];
+  else if(/^[a-zA-Z0-9_-]{20,}$/.test(url.trim()))id=url.trim();
+  if(!id)return null;
+  const gidMatch=url.match(/[?&#]gid=(\d+)/);
+  const gid=gidMatch?gidMatch[1]:'0';
+  return`https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
+}
+
+async function fetchSheetData(type){
+  const inputId=type==='inflow'?'sheetUrlInflow':'sheetUrlEnqueue';
+  const url=document.getElementById(inputId).value.trim();
+  if(!url){setStatus(type,'⚠ Nhập URL Google Sheet trước','err');return;}
+  const csvUrl=sheetsToCSV(url);
+  if(!csvUrl){setStatus(type,'❌ URL không hợp lệ — cần link Google Sheets','err');return;}
+  setStatus(type,'⏳ Đang tải dữ liệu từ Google Sheets…','');
+  try{
+    const res=await fetch(csvUrl);
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const text=await res.text();
+    if(text.includes('<html'))throw new Error('Sheet chưa được chia sẻ công khai');
+    parseCSV(text,type);
+    // Save URL to config alongside data
+    if(type==='inflow')window._sheetUrlInflow=url;
+    else window._sheetUrlEnqueue=url;
+  }catch(err){
+    setStatus(type,`❌ Lỗi: ${err.message}. Đảm bảo sheet đã "Share → Anyone with the link → Viewer"`,'err');
+  }
+}
+
+async function refreshAllSheets(){
+  let fetched=0;
+  if(window._sheetUrlInflow){document.getElementById('sheetUrlInflow').value=window._sheetUrlInflow;await fetchSheetData('inflow');fetched++;}
+  if(window._sheetUrlEnqueue){document.getElementById('sheetUrlEnqueue').value=window._sheetUrlEnqueue;await fetchSheetData('enqueue');fetched++;}
+  if(!fetched)setStatus('inflow','⚠ Chưa có Sheet URL nào được lưu','err');
+}
+
 // ── SHIFT DEFINITIONS ─────────────────────────────────────────────────────────
 function buildShift(name,start,brk,cost){
   const slots=[];
@@ -294,10 +339,11 @@ function optimize(inflows,carryIn){
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function getEventType(ds,dow){
   const p=ds.split('.');if(p.length<3)return dow===6?'Sat':dow===0?'Sun':'Normal';
-  const d=parseInt(p[0]),m=parseInt(p[1]);
+  const d=parseInt(p[0]),m=parseInt(p[1]),y=parseInt(p[2]);
   if(d===m)return 'Spike';
-  const prev=new Date(parseInt(p[2]),m-1,d);prev.setDate(prev.getDate()-1);
-  if(prev.getDate()===prev.getMonth()+1)return 'Spike-1';
+  // Spike-1: ngày liền kề TRƯỚC một ngày Spike
+  const nextDt=new Date(y,m-1,d);nextDt.setDate(nextDt.getDate()+1);
+  if(nextDt.getDate()===nextDt.getMonth()+1)return 'Spike-1';
   if(d===14)return '14th';if(d===15)return '15th';if(d===24)return '24th';if(d===25)return '25th';
   if(dow===6)return 'Sat';if(dow===0)return 'Sun';return 'Normal';
 }
