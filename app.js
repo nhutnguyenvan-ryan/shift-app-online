@@ -27,12 +27,21 @@ window.addEventListener('DOMContentLoaded', async () => {
 async function fetchMe() {
   try {
     const res = await fetch('/api/me');
-    if (!res.ok) return;
+    
+    // Nếu Server trả về lỗi (như 404, 500), dừng lại luôn chứ không ép kiểu JSON để tránh sập code
+    if (!res.ok) {
+      console.warn("Auth API returned status:", res.status);
+      applyRole(); // Vẫn gọi hàm này để kích hoạt giao diện mặc định (viewer)
+      return;
+    }
+    
     const { user, role } = await res.json();
-    currentRole = role; currentUser = user;
+    currentRole = role; 
+    currentUser = user;
     applyRole();
   } catch (err) {
-    console.error("Auth API error:", err);
+    console.error("Failed to fetch auth state, breaking avoided:", err);
+    applyRole(); // Có lỗi mạng vẫn chạy tiếp giao diện viewer chứ không khóa cứng app
   }
 }
 
