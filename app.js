@@ -340,56 +340,80 @@ function getEff(d){return manualShift[d]||weekData[d].opt;}
 
 // ── RENDER WEEK ────────────────────────────────────────────────────────────────
 function renderWeekGrid(){
-  const cols=Math.min(weekData.length,7);
+  // Clear old day-card grid (not used anymore)
   const g=document.getElementById('weekGrid');
-  g.style.gridTemplateColumns=`repeat(${cols},1fr)`;
-  g.innerHTML=weekData.map(wd=>{
-    const e=getEff(wd.d);const ok=e.coverage_pct>=TARGET;
-    const ec=EVT_COLORS[wd.event]||EVT_COLORS.Normal;
-    return`<div class="day-card" onclick="selectDay(${wd.d})" id="dc${wd.d}">
-      <div class="dc-dow">${wd.dowLabel}</div>
-      <div class="dc-date">${wd.dateStr}</div>
-      <div class="dc-event" style="background:${ec.bg};color:${ec.text}">${wd.event}</div>
-      <div class="dc-hc" style="color:${ok?'var(--success)':'var(--danger)'}">${e.weightedHC.toFixed(1)}</div>
-      <div class="dc-breakdown">FT ${e.ft} · PT ${e.pt}</div>
-      <div class="dc-kpi">
-        <span class="dc-stat" style="color:${ok?'var(--success)':'var(--danger)'}">▲ ${(e.coverage_pct*100).toFixed(1)}%</span>
-        <span class="dc-stat" style="color:${e.abandon_pct<1-TARGET?'var(--success)':'var(--danger)'}">▽ ${(e.abandon_pct*100).toFixed(1)}%</span>
-      </div>
-    </div>`;
-  }).join('');
+  g.innerHTML='';g.style.gridTemplateColumns='';
 
+  // Build pivot table
+  const pivot=document.getElementById('weekPivot');
+  if(!pivot)return;
+
+  const evtColors={Normal:'#059669',Spike:'#dc2626','Spike-1':'#d97706','14th':'#2563eb','15th':'#2563eb','24th':'#7c3aed','25th':'#7c3aed',Sat:'#6b7280',Sun:'#6b7280'};
+
+  // Header rows
+  let thead=`<thead>
+    <tr class="pw-event">
+      <th class="pw-label-col"></th>
+      ${weekData.map(wd=>{const c=evtColors[wd.event]||'#6b7280';return`<th style="color:${c}">${wd.event}</th>`;}).join('')}
+    </tr>
+    <tr class="pw-dow">
+      <th class="pw-label-col"></th>
+      ${weekData.map(wd=>`<th>${wd.dowLabel}</th>`).join('')}
+    </tr>
+    <tr class="pw-date">
+      <th class="pw-label-col"></th>
+      ${weekData.map(wd=>`<th>${wd.dateStr}</th>`).join('')}
+    </tr>
+  </thead>`;
+
+  // Summary rows
+  const summaryRows=[
+    {label:'Inflow', fn:wd=>Math.round(getEff(wd.d).totalInflow).toLocaleString(), cls:'pw-inflow'},
+    {label:'Total HC Order (KF)', fn:wd=>getEff(wd.d).weightedHC.toFixed(1), cls:'pw-hc'},
+    {label:'%Task Coverage (KF)', fn:wd=>{const e=getEff(wd.d);const ok=e.coverage_pct>=TARGET;return`<span style="color:${ok?'var(--success)':'var(--danger)'}">${(e.coverage_pct*100).toFixed(3)}</span>`;}, cls:'pw-cov'},
+  ];
+
+  let tbody=`<tbody>`;
+  summaryRows.forEach(r=>{
+    tbody+=`<tr class="${r.cls}"><td class="pw-label-col">${r.label}</td>${weekData.map(wd=>`<td>${r.fn(wd)}</td>`).join('')}</tr>`;
+  });
+
+  // Section header
+  tbody+=`<tr class="pw-section-hdr"><td class="pw-label-col">Breakdown by hour</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
+
+  // Hour rows
+  for(let h=0;h<24;h++){
+    const cells=weekData.map(wd=>{
+      const e=getEff(wd.d);
+      const cov=e.coverage[h]||0;
+      return`<td>${cov.toFixed(1)}</td>`;
+    }).join('');
+    tbody+=`<tr class="pw-hour"><td class="pw-label-col pw-hour-label">${h}:00</td>${cells}</tr>`;
+  }
+
+  tbody+=`</tbody>`;
+
+  pivot.innerHTML=thead+tbody;
+
+  // KPI summary strip (reuse weekKPI)
   const tFT=weekData.reduce((s,w)=>s+getEff(w.d).ft,0);
   const tPT=weekData.reduce((s,w)=>s+getEff(w.d).pt,0);
   const tW=tFT+tPT/2;
   const avgCov=weekData.reduce((s,w)=>s+getEff(w.d).coverage_pct,0)/weekData.length;
   const avgAb=weekData.reduce((s,w)=>s+getEff(w.d).abandon_pct,0)/weekData.length;
   const naive=weekData.reduce((s,w)=>s+Math.ceil(w.inflow/(HOUR_PROD*8)),0);
-
   document.getElementById('weekKPI').innerHTML=`
     <div class="kpi-card"><div class="kpi-label">Total HC Order</div><div class="kpi-value kv-neutral">${tW.toFixed(1)}</div><div class="kpi-sub">FT ${tFT} · PT ${tPT} (×½)</div></div>
     <div class="kpi-card"><div class="kpi-label">HC Saved vs 100%</div><div class="kpi-value kv-good">−${(naive-tW).toFixed(1)}</div><div class="kpi-sub">naive baseline ${naive}</div></div>
     <div class="kpi-card"><div class="kpi-label">Avg Coverage</div><div class="kpi-value ${avgCov>=TARGET?'kv-good':'kv-bad'}">${(avgCov*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(TARGET*100).toFixed(0)}%</div></div>
     <div class="kpi-card"><div class="kpi-label">Avg Abandon</div><div class="kpi-value ${avgAb<1-TARGET?'kv-good':'kv-bad'}">${(avgAb*100).toFixed(1)}%</div><div class="kpi-sub">target &lt; ${((1-TARGET)*100).toFixed(0)}%</div></div>`;
 
-  if(weekChart)weekChart.destroy();
-  const isDark=true;
-  weekChart=new Chart(document.getElementById('weekChart'),{
-    type:'bar',
-    data:{labels:weekData.map(w=>`${w.dowLabel} ${w.dateStr.slice(0,5)}`),datasets:[
-      {label:'Fulltime',data:weekData.map(w=>getEff(w.d).ft),backgroundColor:'#2563eb',borderRadius:4,stack:'s'},
-      {label:'Parttime/2',data:weekData.map(w=>getEff(w.d).pt/2),backgroundColor:'#059669',borderRadius:4,stack:'s'}
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}`}}},
-      scales:{x:{stacked:true,ticks:{color:'#4a5068',font:{size:10}},grid:{color:'rgba(0,0,0,.06)'}},
-        y:{stacked:true,beginAtZero:true,ticks:{color:'#4a5068',font:{size:11}},grid:{color:'rgba(0,0,0,.06)'}}}}
-  });
+  if(weekChart)weekChart.destroy();weekChart=null;
 }
 
 function selectDay(d){
   document.getElementById('daySelect').value=d;
   document.getElementById('shiftDaySelect').value=d;
-  document.querySelectorAll('.day-card').forEach((el,i)=>el.classList.toggle('active',i===d));
   renderDayDetail(); renderShiftBreakdown();
 }
 

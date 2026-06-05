@@ -154,15 +154,13 @@
 
   <!-- ── WEEK TAB ── -->
   <div id="sec-week" class="section">
-    <div class="week-grid" id="weekGrid"></div>
     <div class="kpi-grid" id="weekKPI"></div>
-    <div class="chart-card">
-      <div class="chart-title">Optimized HC Order by Day <span class="chart-formula">Total HC = FT + PT÷2</span></div>
-      <div class="chart-legend">
-        <span class="leg"><span class="leg-sq" style="background:#2563eb"></span>Fulltime</span>
-        <span class="leg"><span class="leg-sq" style="background:#059669"></span>Parttime / 2</span>
+    <div id="weekGrid"></div>
+    <div class="table-card">
+      <div class="table-card-title">Optimized HC Order by Day — Breakdown by Hour</div>
+      <div class="table-scroll">
+        <table class="data-table pivot-week" id="weekPivot"></table>
       </div>
-      <div class="chart-wrap"><canvas id="weekChart"></canvas></div>
     </div>
   </div>
 
