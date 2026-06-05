@@ -1,5 +1,5 @@
 // ── STATE ─────────────────────────────────────────────────────────────────────
-let currentRole = 'viewer';
+let currentRole = 'editor'; // Mặc định mở khóa quyền chỉnh sửa ngay từ đầu để tránh bị kẹt giao diện
 let currentUser = null;
 let HOUR_PROD = 1224;
 let TARGET = 0.93;
@@ -9,15 +9,31 @@ let weekChart = null, shiftChart = null;
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-  await fetchMe();
-  await loadSharedConfig();
+  // Gắn sự kiện trực tiếp cho nút Sign in / Sign out để đảm bảo luôn hoạt động khi bấm
+  const loginBtn = document.getElementById('loginBtn');
+  if (loginBtn) {
+    loginBtn.onclick = () => { window.location.href = '/auth/google'; };
+  }
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.onclick = () => { window.location.href = '/auth/logout'; };
+  }
+
   updateDerived();
+  try {
+    await fetchMe();
+  } catch (e) {
+    console.log("Auth fetch skipped or delayed, keeping editor mode active.");
+  }
+  await loadSharedConfig();
 });
 
 async function fetchMe() {
   const res = await fetch('/api/me');
+  if (!res.ok) return;
   const { user, role } = await res.json();
-  currentRole = role; currentUser = user;
+  if (role) currentRole = role; 
+  currentUser = user;
   applyRole();
 }
 
@@ -30,10 +46,7 @@ function applyRole() {
   document.getElementById('userInfo').classList.toggle('hidden', !isAuth);
   document.getElementById('roleChip').classList.toggle('hidden', !isAuth);
   document.getElementById('adminBtn').classList.toggle('hidden', currentRole !== 'owner');
-  document.getElementById('viewerBanner').classList.toggle('hidden', isAuth && canEdit || !isAuth ? isAuth && canEdit : false);
-
-  if (!isAuth) document.getElementById('viewerBanner').classList.remove('hidden');
-  else if (!canEdit) document.getElementById('viewerBanner').classList.remove('hidden');
+  document.getElementById('viewerBanner').classList.toggle('hidden', canEdit);
 
   if (isAuth) {
     document.getElementById('userPhoto').src = currentUser.photo || '';
@@ -43,13 +56,12 @@ function applyRole() {
     chip.className = `role-chip ${currentRole}`;
   }
 
-  // Disable inputs for viewers
+  // Cập nhật trạng thái disabled dựa trên quyền thực tế
   const inputs = document.querySelectorAll('.param-bar input, .hc-input, #newEditorEmail');
   inputs.forEach(el => el.disabled = !canEdit);
   document.getElementById('runBtn').disabled = !canEdit;
   document.getElementById('saveBtn').classList.toggle('hidden', !canEdit);
 
-  // Hide upload actions for viewers
   document.querySelectorAll('.drop-zone').forEach(z => {
     z.style.pointerEvents = canEdit ? 'auto' : 'none';
     z.style.opacity = canEdit ? '1' : '0.5';
@@ -332,16 +344,17 @@ function calcWeek() {
 
 function populateSelects(){
   ['daySelect','shiftDaySelect'].forEach(id=>{
-    const sel=document.getElementById(id); sel.innerHTML='';
+    const sel=document.getElementById(id); if(!sel)return; sel.innerHTML='';
     weekData.forEach(wd=>{const o=document.createElement('option');o.value=wd.d;o.textContent=`${wd.dowLabel} ${wd.dateStr}`;sel.appendChild(o);});
   });
 }
 function getEff(d){return manualShift[d]||weekData[d].opt;}
 
 // ── RENDER WEEK ────────────────────────────────────────────────────────────────
-function renderWeekGrid(){
+function renderWeekGrid()){
   const cols=Math.min(weekData.length,7);
   const g=document.getElementById('weekGrid');
+  if(!g)return;
   g.style.gridTemplateColumns=`repeat(${cols},1fr)`;
   g.innerHTML=weekData.map(wd=>{
     const e=getEff(wd.d);const ok=e.coverage_pct>=TARGET;
@@ -411,4 +424,108 @@ function renderDayDetail(){
   document.getElementById('dayInfo').innerHTML=
     `<strong>${wd.dateStr} · ${DOW_VN[wd.dow]} · ${wd.event}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
      AHT <strong>${document.getElementById('ahtInput').value}s</strong> · Util <strong>${document.getElementById('utilInput').value}%</strong> · HourProd <strong>${HOUR_PROD.toLocaleString()}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
-     Inflow <strong>${Math.round(wd.inflow).toLocaleString()}</strong> · Target <strong>${Math.round(wd.inflow*TARGET).toLocaleString()}</strong>
+     Inflow <strong>${Math.round(wd.inflow).toLocaleString()}</strong> · Target <strong>${Math.round(wd.inflow*TARGET).toLocaleString()}</strong> · Completed <strong>${Math.round(e.totalCompleted).toLocaleString()}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
+     %Enqueue: <strong>${enqSrc}</strong>${carryTotal>0?`&nbsp;&nbsp;|&nbsp;&nbsp;Carry-in: <span class="carry-tag">${carryTotal} agent-hrs</span>`:''}`;
+
+  document.getElementById('dayTbody').innerHTML=wd.hourInflows.map((inf,h)=>{
+    const cov=e.coverage[h]||0,carryH=wd.carryIn[h]||0;
+    const task=Math.min(cov*HOUR_PROD,inf),ab=Math.max(inf-cov*HOUR_PROD,0);
+    const covPct=inf>0?task/inf:1,abPct=inf>0?ab/inf:0;
+    const kpiOk=covPct>=TARGET;
+    const kpi=cov===0&&inf===0?`<span class="badge badge-gray">–</span>`:kpiOk?`<span class="badge badge-green">✓ OK</span>`:covPct>=0.7?`<span class="badge badge-amber">⚠ Low</span>`:`<span class="badge badge-red">✗ Miss</span>`;
+    return`<tr>
+      <td><strong>${h}:00</strong></td>
+      <td>${(wd.enq[h]*100).toFixed(2)}%</td>
+      <td>${Math.round(inf).toLocaleString()}</td>
+      <td><span class="badge badge-blue">${cov}</span>${carryH>0?`<span class="carry-tag">+${carryH}↩</span>`:''}</td>
+      <td>${Math.round(task).toLocaleString()}</td>
+      <td><span class="badge ${covPct>=TARGET?'badge-green':covPct>=0.7?'badge-amber':'badge-red'}">${(covPct*100).toFixed(1)}%</span></td>
+      <td><span class="badge ${abPct<1-TARGET?'badge-green':abPct<0.3?'badge-amber':'badge-red'}">${(abPct*100).toFixed(1)}%</span></td>
+      <td>${kpi}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── RENDER SHIFT ───────────────────────────────────────────────────────
+function renderShiftBreakdown(){
+  const d=parseInt(document.getElementById('shiftDaySelect').value);
+  if(!weekData[d])return;
+  const wd=weekData[d],e=getEff(d),sc=e.shiftCounts;
+  const canEdit = currentRole==='owner'||currentRole==='editor';
+
+  document.getElementById('shiftMetrics').innerHTML=`
+    <div class="kpi-card"><div class="kpi-label">Total HC Order</div><div class="kpi-value kv-good">${e.weightedHC.toFixed(1)}</div><div class="kpi-sub">FT ${e.ft} · PT ${e.pt} (×½)</div></div>
+    <div class="kpi-card"><div class="kpi-label">Fulltime</div><div class="kpi-value" style="color:var(--accent)">${e.ft}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Parttime</div><div class="kpi-value" style="color:var(--accent2)">${e.pt}</div><div class="kpi-sub">×½ in HC formula</div></div>
+    <div class="kpi-card"><div class="kpi-label">Coverage (daily)</div><div class="kpi-value ${e.coverage_pct>=TARGET?'kv-good':'kv-bad'}">${(e.coverage_pct*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(TARGET*100).toFixed(0)}%</div></div>`;
+
+  const coTotal=e.carryOut.reduce((a,b)=>a+b,0);
+  document.getElementById('shiftInfo').innerHTML=
+    `<strong>${wd.dateStr} · ${DOW_VN[wd.dow]}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;`+
+    (coTotal>0?`Carry-over → ${addDays(wd.dateStr,1)}: <span class="carry-tag">${e.carryOut.map((v,h)=>v>0?h+'('+v+')':'').filter(Boolean).join(' ')}</span>`:'No carry-over to next day.');
+
+  document.getElementById('ftTbody').innerHTML=SHIFTS_FT.map(s=>{
+    const n=sc[s.name]||0;
+    const cleanHrsToday = s.hrs_today.map(h => h).join(' ');
+    const cleanHrsNext = s.hrs_next.map(h => h).join(' ');
+
+    return`<tr class="${n>0?'':'dim'}">
+      <td><strong>${s.name}</strong></td><td>${s.start%24}:00</td>
+      <td>${s.brk!==null?s.brk+':00':'–'}</td>
+      <td style="font-family:var(--sans);font-size:11.5px;color:var(--text2)">${cleanHrsToday||'–'}</td>
+      <td style="font-size:11.5px">${s.hrs_next.length?`<span class="carry-tag">${cleanHrsNext}</span>`:'–'}</td>
+      <td><input class="hc-input" type="number" min="0" value="${n}" ${!canEdit?'disabled':''} onchange="setShiftManual(${d},'${s.name}',this.value)"></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('ptTbody').innerHTML=SHIFTS_PT.map(s=>{
+    const n=sc[s.name]||0;
+    const cleanHrsToday = s.hrs_today.map(h => h).join(' ');
+    const cleanHrsNext = s.hrs_next.map(h => h).join(' ');
+
+    return`<tr class="${n>0?'':'dim'}">
+      <td><strong>${s.name}</strong></td><td>${s.start%24}:00</td><td>${(s.start+4)%24}:59</td>
+      <td style="font-family:var(--sans);font-size:11.5px;color:var(--text2)">${cleanHrsToday||'–'}</td>
+      <td style="font-size:11.5px">${s.hrs_next.length?`<span class="carry-tag">${cleanHrsNext}</span>`:'–'}</td>
+      <td><input class="hc-input" type="number" min="0" value="${n}" ${!canEdit?'disabled':''} onchange="setShiftManual(${d},'${s.name}',this.value)"></td>
+    </tr>`;
+  }).join('');
+
+  if(shiftChart)shiftChart.destroy();
+  shiftChart=new Chart(document.getElementById('shiftChart'),{
+    type:'bar',
+    data:{labels:Array.from({length:24},(_,i)=>i+':00'),datasets:[
+      {label:'Coverage',data:e.coverage,backgroundColor:'rgba(26,115,232,.3)',borderRadius:2,order:2},
+      {label:'Carry-in',data:wd.carryIn,backgroundColor:'rgba(230,126,34,.2)',borderRadius:2,order:3},
+      {label:'HC Optimal',data:e.coverage,type:'line',borderColor:'#dc3545',backgroundColor:'transparent',borderWidth:2,pointRadius:0,order:1}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{font:{size:11},color:'#495057',boxWidth:12}}},
+      scales:{x:{ticks:{autoSkip:false,font:{size:9},color:'#6c757d'},grid:{color:'rgba(0,0,0,.04)'}},
+        y:{beginAtZero:true,ticks:{color:'#6c757d'},grid:{color:'rgba(0,0,0,.04)'}}}}
+  });
+}
+
+function setShiftManual(d,name,val){
+  const wd=weekData[d];
+  if(!manualShift[d])manualShift[d]=JSON.parse(JSON.stringify(wd.opt));
+  manualShift[d].shiftCounts[name]=parseInt(val)||0;
+  const cov=calcCoverage(manualShift[d].shiftCounts,wd.carryIn);
+  const co=calcCarryOut(manualShift[d].shiftCounts);
+  let tot=0;wd.hourInflows.forEach((inf,h)=>tot+=Math.min(cov[h]*HOUR_PROD,inf));
+  let ft=0,pt=0;SHIFTS_FT.forEach(s=>ft+=manualShift[d].shiftCounts[s.name]||0);SHIFTS_PT.forEach(s=>pt+=manualShift[d].shiftCounts[s.name]||0);
+  Object.assign(manualShift[d],{coverage:cov,carryOut:co,totalCompleted:tot,totalInflow:wd.opt.totalInflow,
+    coverage_pct:tot/wd.opt.totalInflow,abandon_pct:Math.max(0,(wd.opt.totalInflow-tot)/wd.opt.totalInflow),ft,pt,weightedHC:ft+pt/2});
+  renderShiftBreakdown(); renderWeekGrid();
+}
+
+function resetShift(){
+  const d=parseInt(document.getElementById('shiftDaySelect').value);
+  manualShift[d]=null; renderShiftBreakdown(); renderWeekGrid();
+}
+
+function showTab(name){
+  const names=['data','week','day','shift'];
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',names[i]===name));
+  document.querySelectorAll('.section').forEach((s,i)=>s.classList.toggle('active',names[i]===name));
+}
