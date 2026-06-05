@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShiftIQ – Workforce Scheduling</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- ── AUTH OVERLAY ── -->
+<div id="authOverlay" class="auth-overlay hidden">
+  <div class="auth-card">
+    <div class="auth-logo">ShiftIQ</div>
+    <p class="auth-sub">Workforce Scheduling Intelligence</p>
+    <a href="/auth/google" class="btn-google">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 002.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 01-7.18-2.54H1.83v2.07A8 8 0 008.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 010-3.04V5.41H1.83a8 8 0 000 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 001.83 5.4L4.5 7.49a4.77 4.77 0 014.48-3.3z"/></svg>
+      Đăng nhập bằng Google
+    </a>
+    <p class="auth-note">Chỉ tài khoản được cấp quyền mới có thể chỉnh sửa</p>
+  </div>
+</div>
+
+<!-- ── HEADER ── -->
+<header class="header">
+  <div class="header-left">
+    <span class="logo">ShiftIQ</span>
+    <span class="logo-tag">Workforce Scheduling</span>
+  </div>
+  <div class="header-right">
+    <div id="roleChip" class="role-chip hidden"></div>
+    <div id="userInfo" class="user-info hidden">
+      <img id="userPhoto" class="user-photo" src="" alt="">
+      <span id="userName" class="user-name"></span>
+    </div>
+    <button id="loginBtn" class="btn-outline" onclick="window.location='/auth/google'">Sign in</button>
+    <button id="logoutBtn" class="btn-outline hidden" onclick="window.location='/auth/logout'">Sign out</button>
+    <button id="adminBtn" class="btn-outline hidden" onclick="openAdmin()">⚙ Manage Access</button>
+  </div>
+</header>
+
+<!-- ── VIEWER BANNER ── -->
+<div id="viewerBanner" class="viewer-banner hidden">
+  <span>👁 View-only mode — sign in with an authorized account to edit</span>
+</div>
+
+<!-- ── MAIN APP ── -->
+<main class="main">
+
+  <!-- PARAM BAR -->
+  <div class="param-bar" id="paramBar">
+    <div class="param-group">
+      <label>AHT <span class="param-unit">sec/task</span></label>
+      <input type="number" id="ahtInput" value="2.5" min="0.1" step="0.1" oninput="updateDerived()">
+    </div>
+    <div class="param-sep"></div>
+    <div class="param-group">
+      <label>Utilization <span class="param-unit">%</span></label>
+      <input type="number" id="utilInput" value="85" min="1" max="100" step="1" oninput="updateDerived()">
+    </div>
+    <div class="param-sep"></div>
+    <div class="param-group derived">
+      <label>Hour Productivity <span class="param-unit">tasks/agent/h</span></label>
+      <div id="hpDisplay" class="derived-val">1,224</div>
+      <div class="derived-formula">= 3600 × Util% ÷ AHT</div>
+    </div>
+    <div class="param-sep"></div>
+    <div class="param-group derived">
+      <label>Daily Productivity <span class="param-unit">tasks/agent/day</span></label>
+      <div id="dpDisplay" class="derived-val">9,792</div>
+      <div class="derived-formula">= Hour Prod × 8h</div>
+    </div>
+    <div class="param-sep"></div>
+    <div class="param-group">
+      <label>Coverage Target <span class="param-unit">%</span></label>
+      <input type="number" id="targetCov" value="93" min="50" max="100" step="0.5">
+    </div>
+    <div class="param-sep"></div>
+    <button class="btn-run" id="runBtn" onclick="calcWeek()">
+      <span class="btn-run-icon">▶</span> Run Optimizer
+    </button>
+    <button class="btn-save hidden" id="saveBtn" onclick="saveConfig()">💾 Save</button>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('data')" data-tab="data">
+      <span class="tab-icon">⬆</span> Data Input
+    </button>
+    <button class="tab" onclick="showTab('week')" data-tab="week">
+      <span class="tab-icon">◫</span> Weekly Overview
+    </button>
+    <button class="tab" onclick="showTab('day')" data-tab="day">
+      <span class="tab-icon">≡</span> Daily Detail
+    </button>
+    <button class="tab" onclick="showTab('shift')" data-tab="shift">
+      <span class="tab-icon">⊞</span> Shift Allocation
+    </button>
+  </div>
+
+  <!-- ── DATA TAB ── -->
+  <div id="sec-data" class="section active">
+    <div class="upload-grid">
+      <div class="upload-card">
+        <div class="upload-card-header">
+          <div class="upload-card-num">01</div>
+          <div>
+            <div class="upload-card-title">Daily Inflow</div>
+            <div class="upload-card-sub">Time series of daily task volume</div>
+          </div>
+          <button class="btn-template" onclick="downloadInflowTemplate()">⬇ Template</button>
+        </div>
+        <div class="drop-zone" id="zone-inflow"
+          onclick="document.getElementById('file-inflow').click()"
+          ondragover="dragOver(event,'zone-inflow')" ondragleave="dragLeave('zone-inflow')" ondrop="dropFile(event,'inflow')">
+          <input type="file" id="file-inflow" accept=".csv,.xlsx,.xls" onchange="handleFile(event,'inflow')" style="display:none">
+          <div class="drop-icon">📥</div>
+          <div class="drop-text">Drop CSV / Excel here</div>
+          <div class="drop-sub">Columns: <code>date</code> (dd.mm.yyyy), <code>inflow</code></div>
+        </div>
+        <div id="status-inflow" class="upload-status"></div>
+        <div id="preview-inflow" class="preview-wrap"></div>
+      </div>
+
+      <div class="upload-card">
+        <div class="upload-card-header">
+          <div class="upload-card-num">02</div>
+          <div>
+            <div class="upload-card-title">%Enqueue Profile</div>
+            <div class="upload-card-sub">Hourly distribution per day <em>(optional)</em></div>
+          </div>
+          <button class="btn-template" onclick="downloadEnqueueTemplate()">⬇ Template</button>
+        </div>
+        <div class="drop-zone" id="zone-enqueue"
+          onclick="document.getElementById('file-enqueue').click()"
+          ondragover="dragOver(event,'zone-enqueue')" ondragleave="dragLeave('zone-enqueue')" ondrop="dropFile(event,'enqueue')">
+          <input type="file" id="file-enqueue" accept=".csv,.xlsx,.xls" onchange="handleFile(event,'enqueue')" style="display:none">
+          <div class="drop-icon">📥</div>
+          <div class="drop-text">Drop CSV / Excel here</div>
+          <div class="drop-sub">Columns: <code>date</code>, <code>h0</code>–<code>h23</code> (decimal)</div>
+        </div>
+        <div id="status-enqueue" class="upload-status"></div>
+        <div id="preview-enqueue" class="preview-wrap"></div>
+        <div class="enqueue-note">If not uploaded, default profiles by event type (Normal / Spike / Sat / Sun…) are used automatically.</div>
+      </div>
+    </div>
+
+    <div class="data-actions">
+      <button class="btn-run" onclick="applyAndRun()">▶ Apply & Run</button>
+      <button class="btn-outline" onclick="useSampleData()">Use sample data</button>
+      <span id="applyStatus" class="apply-status"></span>
+    </div>
+  </div>
+
+  <!-- ── WEEK TAB ── -->
+  <div id="sec-week" class="section">
+    <div class="week-grid" id="weekGrid"></div>
+    <div class="kpi-grid" id="weekKPI"></div>
+    <div class="chart-card">
+      <div class="chart-title">Optimized HC Order by Day <span class="chart-formula">Total HC = FT + PT÷2</span></div>
+      <div class="chart-legend">
+        <span class="leg"><span class="leg-sq" style="background:#2563eb"></span>Fulltime</span>
+        <span class="leg"><span class="leg-sq" style="background:#059669"></span>Parttime / 2</span>
+      </div>
+      <div class="chart-wrap"><canvas id="weekChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ── DAY TAB ── -->
+  <div id="sec-day" class="section">
+    <div class="day-controls">
+      <div class="fg"><label>Select Day</label>
+        <select id="daySelect" onchange="renderDayDetail()" class="day-select"></select>
+      </div>
+    </div>
+    <div class="kpi-grid" id="dayMetrics"></div>
+    <div class="info-bar" id="dayInfo"></div>
+    <div class="table-card">
+      <div class="table-card-title">Hourly Breakdown — Optimized HC</div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr>
+            <th>Hour</th><th>%Enqueue</th><th>Inflow/h</th>
+            <th>HC Present</th><th>Task Completed</th>
+            <th>%Cov/h</th><th>%Abandon/h</th><th>KPI</th>
+          </tr></thead>
+          <tbody id="dayTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SHIFT TAB ── -->
+  <div id="sec-shift" class="section">
+    <div class="day-controls">
+      <div class="fg"><label>Select Day</label>
+        <select id="shiftDaySelect" onchange="renderShiftBreakdown()" class="day-select"></select>
+      </div>
+      <button class="btn-outline" onclick="resetShift()">↺ Reset to Optimal</button>
+    </div>
+    <div class="kpi-grid" id="shiftMetrics"></div>
+    <div class="info-bar" id="shiftInfo"></div>
+    <div class="shift-grid">
+      <div class="table-card">
+        <div class="table-card-title">Fulltime Shifts</div>
+        <div class="table-scroll"><table class="data-table compact">
+          <thead><tr><th>Shift</th><th>Start</th><th>Break</th><th>Hours (today)</th><th>Carry-over</th><th>Count</th></tr></thead>
+          <tbody id="ftTbody"></tbody>
+        </table></div>
+      </div>
+      <div class="table-card">
+        <div class="table-card-title">Parttime Shifts</div>
+        <div class="table-scroll"><table class="data-table compact">
+          <thead><tr><th>Shift</th><th>Start</th><th>End</th><th>Hours (today)</th><th>Carry-over</th><th>Count</th></tr></thead>
+          <tbody id="ptTbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Coverage vs Optimal HC by Hour</div>
+      <div class="chart-legend">
+        <span class="leg"><span class="leg-sq" style="background:rgba(37,99,235,.4)"></span>Coverage</span>
+        <span class="leg"><span class="leg-sq" style="background:rgba(217,119,6,.3);border:1px solid #d97706"></span>Carry-in</span>
+        <span class="leg"><span class="leg-sq" style="background:#dc2626"></span>HC Optimal</span>
+      </div>
+      <div class="chart-wrap" style="height:280px"><canvas id="shiftChart"></canvas></div>
+    </div>
+  </div>
+</main>
+
+<!-- ── ADMIN MODAL ── -->
+<div id="adminModal" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeAdmin()"></div>
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Access Management</span>
+      <button class="modal-close" onclick="closeAdmin()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section-title">Editor Access</div>
+      <p class="modal-note">Editors can change inputs, upload data, run optimizer and save configurations.</p>
+      <div class="add-editor-row">
+        <input type="email" id="newEditorEmail" placeholder="email@example.com" class="editor-input">
+        <button class="btn-run" onclick="addEditor()">Add Editor</button>
+      </div>
+      <div id="editorList" class="editor-list"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
