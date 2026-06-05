@@ -1,5 +1,5 @@
 // ── STATE ─────────────────────────────────────────────────────────────────────
-let currentRole = 'editor'; // Mặc định mở khóa quyền chỉnh sửa ngay từ đầu để tránh bị kẹt giao diện
+let currentRole = 'viewer';
 let currentUser = null;
 let HOUR_PROD = 1224;
 let TARGET = 0.93;
@@ -9,7 +9,7 @@ let weekChart = null, shiftChart = null;
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-  // Gắn sự kiện trực tiếp cho nút Sign in / Sign out để đảm bảo luôn hoạt động khi bấm
+  // Gắn sự kiện chuyển hướng trực tiếp cho nút Sign in và Sign out
   const loginBtn = document.getElementById('loginBtn');
   if (loginBtn) {
     loginBtn.onclick = () => { window.location.href = '/auth/google'; };
@@ -19,54 +19,21 @@ window.addEventListener('DOMContentLoaded', async () => {
     logoutBtn.onclick = () => { window.location.href = '/auth/logout'; };
   }
 
-  updateDerived();
-  try {
-    await fetchMe();
-  } catch (e) {
-    console.log("Auth fetch skipped or delayed, keeping editor mode active.");
-  }
+  await fetchMe();
   await loadSharedConfig();
+  updateDerived();
 });
 
 async function fetchMe() {
-  const res = await fetch('/api/me');
-  if (!res.ok) return;
-  const { user, role } = await res.json();
-  if (role) currentRole = role; 
-  currentUser = user;
-  applyRole();
-}
-
-function applyRole() {
-  const isAuth = !!currentUser;
-  const canEdit = currentRole === 'owner' || currentRole === 'editor';
-
-  document.getElementById('loginBtn').classList.toggle('hidden', isAuth);
-  document.getElementById('logoutBtn').classList.toggle('hidden', !isAuth);
-  document.getElementById('userInfo').classList.toggle('hidden', !isAuth);
-  document.getElementById('roleChip').classList.toggle('hidden', !isAuth);
-  document.getElementById('adminBtn').classList.toggle('hidden', currentRole !== 'owner');
-  document.getElementById('viewerBanner').classList.toggle('hidden', canEdit);
-
-  if (isAuth) {
-    document.getElementById('userPhoto').src = currentUser.photo || '';
-    document.getElementById('userName').textContent = currentUser.name;
-    const chip = document.getElementById('roleChip');
-    chip.textContent = currentRole.toUpperCase();
-    chip.className = `role-chip ${currentRole}`;
+  try {
+    const res = await fetch('/api/me');
+    if (!res.ok) return;
+    const { user, role } = await res.json();
+    currentRole = role; currentUser = user;
+    applyRole();
+  } catch (err) {
+    console.error("Auth API error:", err);
   }
-
-  // Cập nhật trạng thái disabled dựa trên quyền thực tế
-  const inputs = document.querySelectorAll('.param-bar input, .hc-input, #newEditorEmail');
-  inputs.forEach(el => el.disabled = !canEdit);
-  document.getElementById('runBtn').disabled = !canEdit;
-  document.getElementById('saveBtn').classList.toggle('hidden', !canEdit);
-
-  document.querySelectorAll('.drop-zone').forEach(z => {
-    z.style.pointerEvents = canEdit ? 'auto' : 'none';
-    z.style.opacity = canEdit ? '1' : '0.5';
-  });
-  document.querySelectorAll('.data-actions button').forEach(b => b.disabled = !canEdit);
 }
 
 // ── PARAMS ────────────────────────────────────────────────────────────────────
