@@ -9,40 +9,52 @@ let weekChart = null, shiftChart = null;
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-  // Gắn sự kiện chuyển hướng trực tiếp cho nút Sign in và Sign out
-  const loginBtn = document.getElementById('loginBtn');
-  if (loginBtn) {
-    loginBtn.onclick = () => { window.location.href = '/auth/google'; };
-  }
-  const logoutBtn = document.getElementById('logoutBtn');
-  if (logoutBtn) {
-    logoutBtn.onclick = () => { window.location.href = '/auth/logout'; };
-  }
-
   await fetchMe();
   await loadSharedConfig();
   updateDerived();
 });
 
 async function fetchMe() {
-  try {
-    const res = await fetch('/api/me');
-    
-    // Nếu Server trả về lỗi (như 404, 500), dừng lại luôn chứ không ép kiểu JSON để tránh sập code
-    if (!res.ok) {
-      console.warn("Auth API returned status:", res.status);
-      applyRole(); // Vẫn gọi hàm này để kích hoạt giao diện mặc định (viewer)
-      return;
-    }
-    
-    const { user, role } = await res.json();
-    currentRole = role; 
-    currentUser = user;
-    applyRole();
-  } catch (err) {
-    console.error("Failed to fetch auth state, breaking avoided:", err);
-    applyRole(); // Có lỗi mạng vẫn chạy tiếp giao diện viewer chứ không khóa cứng app
+  const res = await fetch('/api/me');
+  const { user, role } = await res.json();
+  currentRole = role; currentUser = user;
+  applyRole();
+}
+
+function applyRole() {
+  const isAuth = !!currentUser;
+  const canEdit = currentRole === 'owner' || currentRole === 'editor';
+
+  document.getElementById('loginBtn').classList.toggle('hidden', isAuth);
+  document.getElementById('logoutBtn').classList.toggle('hidden', !isAuth);
+  document.getElementById('userInfo').classList.toggle('hidden', !isAuth);
+  document.getElementById('roleChip').classList.toggle('hidden', !isAuth);
+  document.getElementById('adminBtn').classList.toggle('hidden', currentRole !== 'owner');
+  document.getElementById('viewerBanner').classList.toggle('hidden', isAuth && canEdit || !isAuth ? isAuth && canEdit : false);
+
+  if (!isAuth) document.getElementById('viewerBanner').classList.remove('hidden');
+  else if (!canEdit) document.getElementById('viewerBanner').classList.remove('hidden');
+
+  if (isAuth) {
+    document.getElementById('userPhoto').src = currentUser.photo || '';
+    document.getElementById('userName').textContent = currentUser.name;
+    const chip = document.getElementById('roleChip');
+    chip.textContent = currentRole.toUpperCase();
+    chip.className = `role-chip ${currentRole}`;
   }
+
+  // Disable inputs for viewers
+  const inputs = document.querySelectorAll('.param-bar input, .hc-input, #newEditorEmail');
+  inputs.forEach(el => el.disabled = !canEdit);
+  document.getElementById('runBtn').disabled = !canEdit;
+  document.getElementById('saveBtn').classList.toggle('hidden', !canEdit);
+
+  // Hide upload actions for viewers
+  document.querySelectorAll('.drop-zone').forEach(z => {
+    z.style.pointerEvents = canEdit ? 'auto' : 'none';
+    z.style.opacity = canEdit ? '1' : '0.5';
+  });
+  document.querySelectorAll('.data-actions button').forEach(b => b.disabled = !canEdit);
 }
 
 // ── PARAMS ────────────────────────────────────────────────────────────────────
@@ -296,7 +308,7 @@ function getDOW(ds){return parseDateStr(ds).getDay();}
 
 const DOW_LABELS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DOW_VN=['Chủ Nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'];
-const EVT_COLORS={Normal:{bg:'rgba(40,167,69,.12)',text:'#28a745'},Spike:{bg:'rgba(220,53,69,.12)',text:'#dc3545'},'Spike-1':{bg:'rgba(255,193,7,.15)',text:'#b58100'},'14th':{bg:'rgba(26,115,232,.12)',text:'#1a73e8'},'15th':{bg:'rgba(26,115,232,.12)',text:'#1a73e8'},'24th':{bg:'rgba(156,39,176,.12)',text:'#9c27b0'},'25th':{bg:'rgba(156,39,176,.12)',text:'#9c27b0'},Sat:{bg:'var(--bg3)',text:'var(--text2)'},Sun:{bg:'var(--bg3)',text:'var(--text2)'}};
+const EVT_COLORS={Normal:{bg:'rgba(52,216,158,.15)',text:'#34d89e'},Spike:{bg:'rgba(255,91,91,.15)',text:'#ff5b5b'},'Spike-1':{bg:'rgba(255,180,50,.15)',text:'#ffb432'},'14th':{bg:'rgba(91,143,255,.15)',text:'#5b8fff'},'15th':{bg:'rgba(91,143,255,.15)',text:'#5b8fff'},'24th':{bg:'rgba(200,100,200,.15)',text:'#c864c8'},'25th':{bg:'rgba(200,100,200,.15)',text:'#c864c8'},Sat:{bg:'rgba(255,255,255,.06)',text:'#8b90a8'},Sun:{bg:'rgba(255,255,255,.06)',text:'#8b90a8'}};
 
 // ── MAIN CALC ──────────────────────────────────────────────────────────────────
 function calcWeek() {
@@ -320,17 +332,16 @@ function calcWeek() {
 
 function populateSelects(){
   ['daySelect','shiftDaySelect'].forEach(id=>{
-    const sel=document.getElementById(id); if(!sel)return; sel.innerHTML='';
+    const sel=document.getElementById(id); sel.innerHTML='';
     weekData.forEach(wd=>{const o=document.createElement('option');o.value=wd.d;o.textContent=`${wd.dowLabel} ${wd.dateStr}`;sel.appendChild(o);});
   });
 }
 function getEff(d){return manualShift[d]||weekData[d].opt;}
 
 // ── RENDER WEEK ────────────────────────────────────────────────────────────────
-function renderWeekGrid()){
+function renderWeekGrid(){
   const cols=Math.min(weekData.length,7);
   const g=document.getElementById('weekGrid');
-  if(!g)return;
   g.style.gridTemplateColumns=`repeat(${cols},1fr)`;
   g.innerHTML=weekData.map(wd=>{
     const e=getEff(wd.d);const ok=e.coverage_pct>=TARGET;
@@ -362,15 +373,16 @@ function renderWeekGrid()){
     <div class="kpi-card"><div class="kpi-label">Avg Abandon</div><div class="kpi-value ${avgAb<1-TARGET?'kv-good':'kv-bad'}">${(avgAb*100).toFixed(1)}%</div><div class="kpi-sub">target &lt; ${((1-TARGET)*100).toFixed(0)}%</div></div>`;
 
   if(weekChart)weekChart.destroy();
+  const isDark=true;
   weekChart=new Chart(document.getElementById('weekChart'),{
     type:'bar',
     data:{labels:weekData.map(w=>`${w.dowLabel} ${w.dateStr.slice(0,5)}`),datasets:[
-      {label:'Fulltime',data:weekData.map(w=>getEff(w.d).ft),backgroundColor:'#1a73e8',borderRadius:4,stack:'s'},
-      {label:'Parttime/2',data:weekData.map(w=>getEff(w.d).pt/2),backgroundColor:'#28a745',borderRadius:4,stack:'s'}
+      {label:'Fulltime',data:weekData.map(w=>getEff(w.d).ft),backgroundColor:'#5b8fff',borderRadius:4,stack:'s'},
+      {label:'Parttime/2',data:weekData.map(w=>getEff(w.d).pt/2),backgroundColor:'#34d89e',borderRadius:4,stack:'s'}
     ]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}`}}},
-      scales:{x:{stacked:true,ticks:{color:'#6c757d',font:{size:10}},grid:{color:'rgba(0,0,0,.04)'}},
-        y:{stacked:true,beginAtZero:true,ticks:{color:'#6c757d',font:{size:11}},grid:{color:'rgba(0,0,0,.04)'}}}}
+      scales:{x:{stacked:true,ticks:{color:'#555d7a',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}},
+        y:{stacked:true,beginAtZero:true,ticks:{color:'#555d7a',font:{size:11}},grid:{color:'rgba(255,255,255,.05)'}}}}
   });
 }
 
@@ -403,6 +415,7 @@ function renderDayDetail(){
      Inflow <strong>${Math.round(wd.inflow).toLocaleString()}</strong> · Target <strong>${Math.round(wd.inflow*TARGET).toLocaleString()}</strong> · Completed <strong>${Math.round(e.totalCompleted).toLocaleString()}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
      %Enqueue: <strong>${enqSrc}</strong>${carryTotal>0?`&nbsp;&nbsp;|&nbsp;&nbsp;Carry-in: <span class="carry-tag">${carryTotal} agent-hrs</span>`:''}`;
 
+  const canEdit = currentRole==='owner'||currentRole==='editor';
   document.getElementById('dayTbody').innerHTML=wd.hourInflows.map((inf,h)=>{
     const cov=e.coverage[h]||0,carryH=wd.carryIn[h]||0;
     const task=Math.min(cov*HOUR_PROD,inf),ab=Math.max(inf-cov*HOUR_PROD,0);
@@ -422,7 +435,7 @@ function renderDayDetail(){
   }).join('');
 }
 
-// ── RENDER SHIFT ───────────────────────────────────────────────────────
+// ── RENDER SHIFT ───────────────────────────────────────────────────────────────
 function renderShiftBreakdown(){
   const d=parseInt(document.getElementById('shiftDaySelect').value);
   if(!weekData[d])return;
@@ -438,31 +451,25 @@ function renderShiftBreakdown(){
   const coTotal=e.carryOut.reduce((a,b)=>a+b,0);
   document.getElementById('shiftInfo').innerHTML=
     `<strong>${wd.dateStr} · ${DOW_VN[wd.dow]}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;`+
-    (coTotal>0?`Carry-over → ${addDays(wd.dateStr,1)}: <span class="carry-tag">${e.carryOut.map((v,h)=>v>0?h+'('+v+')':'').filter(Boolean).join(' ')}</span>`:'No carry-over to next day.');
+    (coTotal>0?`Carry-over → ${addDays(wd.dateStr,1)}: <span class="carry-tag">${e.carryOut.map((v,h)=>v>0?h+':00('+v+')':'').filter(Boolean).join(' ')}</span>`:'No carry-over to next day.');
 
   document.getElementById('ftTbody').innerHTML=SHIFTS_FT.map(s=>{
     const n=sc[s.name]||0;
-    const cleanHrsToday = s.hrs_today.map(h => h).join(' ');
-    const cleanHrsNext = s.hrs_next.map(h => h).join(' ');
-
     return`<tr class="${n>0?'':'dim'}">
       <td><strong>${s.name}</strong></td><td>${s.start%24}:00</td>
       <td>${s.brk!==null?s.brk+':00':'–'}</td>
-      <td style="font-family:var(--sans);font-size:11.5px;color:var(--text2)">${cleanHrsToday||'–'}</td>
-      <td style="font-size:11.5px">${s.hrs_next.length?`<span class="carry-tag">${cleanHrsNext}</span>`:'–'}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${s.hrs_today.map(h=>h+':00').join(' ')||'–'}</td>
+      <td style="font-size:11px">${s.hrs_next.length?`<span class="carry-tag">${s.hrs_next.map(h=>h+':00').join(' ')}</span>`:'–'}</td>
       <td><input class="hc-input" type="number" min="0" value="${n}" ${!canEdit?'disabled':''} onchange="setShiftManual(${d},'${s.name}',this.value)"></td>
     </tr>`;
   }).join('');
 
   document.getElementById('ptTbody').innerHTML=SHIFTS_PT.map(s=>{
     const n=sc[s.name]||0;
-    const cleanHrsToday = s.hrs_today.map(h => h).join(' ');
-    const cleanHrsNext = s.hrs_next.map(h => h).join(' ');
-
     return`<tr class="${n>0?'':'dim'}">
       <td><strong>${s.name}</strong></td><td>${s.start%24}:00</td><td>${(s.start+4)%24}:59</td>
-      <td style="font-family:var(--sans);font-size:11.5px;color:var(--text2)">${cleanHrsToday||'–'}</td>
-      <td style="font-size:11.5px">${s.hrs_next.length?`<span class="carry-tag">${cleanHrsNext}</span>`:'–'}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${s.hrs_today.map(h=>h+':00').join(' ')||'–'}</td>
+      <td style="font-size:11px">${s.hrs_next.length?`<span class="carry-tag">${s.hrs_next.map(h=>h+':00').join(' ')}</span>`:'–'}</td>
       <td><input class="hc-input" type="number" min="0" value="${n}" ${!canEdit?'disabled':''} onchange="setShiftManual(${d},'${s.name}',this.value)"></td>
     </tr>`;
   }).join('');
@@ -471,14 +478,14 @@ function renderShiftBreakdown(){
   shiftChart=new Chart(document.getElementById('shiftChart'),{
     type:'bar',
     data:{labels:Array.from({length:24},(_,i)=>i+':00'),datasets:[
-      {label:'Coverage',data:e.coverage,backgroundColor:'rgba(26,115,232,.3)',borderRadius:2,order:2},
-      {label:'Carry-in',data:wd.carryIn,backgroundColor:'rgba(230,126,34,.2)',borderRadius:2,order:3},
-      {label:'HC Optimal',data:e.coverage,type:'line',borderColor:'#dc3545',backgroundColor:'transparent',borderWidth:2,pointRadius:0,order:1}
+      {label:'Coverage',data:e.coverage,backgroundColor:'rgba(91,143,255,.4)',borderRadius:2,order:2},
+      {label:'Carry-in',data:wd.carryIn,backgroundColor:'rgba(255,180,50,.25)',borderRadius:2,order:3},
+      {label:'HC Optimal',data:e.coverage,type:'line',borderColor:'#ff5b5b',backgroundColor:'transparent',borderWidth:2,pointRadius:0,order:1}
     ]},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{labels:{font:{size:11},color:'#495057',boxWidth:12}}},
-      scales:{x:{ticks:{autoSkip:false,font:{size:9},color:'#6c757d'},grid:{color:'rgba(0,0,0,.04)'}},
-        y:{beginAtZero:true,ticks:{color:'#6c757d'},grid:{color:'rgba(0,0,0,.04)'}}}}
+      plugins:{legend:{labels:{font:{size:11},color:'#8b90a8',boxWidth:12}}},
+      scales:{x:{ticks:{autoSkip:false,font:{size:9},color:'#555d7a'},grid:{color:'rgba(255,255,255,.04)'}},
+        y:{beginAtZero:true,ticks:{color:'#555d7a'},grid:{color:'rgba(255,255,255,.05)'}}}}
   });
 }
 
