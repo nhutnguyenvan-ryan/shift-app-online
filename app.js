@@ -313,6 +313,50 @@ function calcCarryOut(sc){
 }
 function dailyTask(cov,inflows){let t=0;for(let h=0;h<24;h++)t+=Math.min(cov[h]*HOUR_PROD,inflows[h]);return t;}
 
+// ── PT → FT CONSOLIDATION ────────────────────────────────────────────────────
+// Các cặp PT có thể ghép thành FT (break đúng 1h sau 4h làm)
+// Điều kiện: 2 PT liên tiếp không overlap, tổng 8h làm + 1h break = FT shift
+const PT_MERGE_RULES = [
+  // [ptA, ptB, ftResult] — ptA.hours + ptB.hours = ft.hours_today
+  {a:'P11',b:'P15',ft:'S1'},  // P11:8-12 + P15:15-19 → S1 start 8 brk 12
+  {a:'P10',b:'P15',ft:'S3'},  // P10:10-14 + P15:15-19 → S3 start 10 brk 14
+  {a:'P11',b:'P8', ft:'S1'},  // P11:8-12 + P8:16-20  → S1 start 8 brk 12 (close enough)
+  {a:'P1', b:'P13',ft:'S2'},  // P1:9-13 + P13:17-21  → S2 start 9 brk 13
+  {a:'P6', b:'P13',ft:'S5'},  // P6:12-16 + P13:17-21 → S5 start 13 brk 17 (approx)
+  {a:'P7', b:'P13',ft:'S4'},  // P7:11-15 + P13:17-21 → S4 start 11 brk 15
+  {a:'P12',b:'P10',ft:'S0'},  // P12:7-11 + P10:10… not right — skip via validation
+  {a:'P2', b:'P14',ft:'S8'},  // P2:13-17 + P14:18-22 → S8 start 14 brk 18 (approx)
+];
+
+function validateMerge(ptA, ptB, ftShift) {
+  // Kiểm tra giờ làm của FT = union của 2 PT (không tính break)
+  const aHrs = new Set(ptA.hrs_today);
+  const bHrs = new Set(ptB.hrs_today);
+  const ftHrs = new Set(ftShift.hrs_today);
+  const union = new Set([...aHrs, ...bHrs]);
+  // FT hours phải là superset của union (có thể có thêm 1 giờ đầu/cuối)
+  let match = 0;
+  union.forEach(h => { if(ftHrs.has(h)) match++; });
+  return match >= Math.min(union.size, ftHrs.size) - 1; // cho phép sai lệch 1h
+}
+
+function consolidatePTtoFT(sc) {
+  const result = JSON.parse(JSON.stringify(sc));
+  for(const rule of PT_MERGE_RULES) {
+    const ptA = ALL_SHIFTS.find(s=>s.name===rule.a);
+    const ptB = ALL_SHIFTS.find(s=>s.name===rule.b);
+    const ft  = ALL_SHIFTS.find(s=>s.name===rule.ft);
+    if(!ptA||!ptB||!ft) continue;
+    if(!validateMerge(ptA,ptB,ft)) continue;
+    const pairs = Math.min(result[rule.a]||0, result[rule.b]||0);
+    if(pairs <= 0) continue;
+    result[rule.a] -= pairs;
+    result[rule.b] -= pairs;
+    result[rule.ft] = (result[rule.ft]||0) + pairs;
+  }
+  return result;
+}
+
 function optimize(inflows,carryIn){
   const totalInflow=inflows.reduce((a,b)=>a+b,0);
   const targetTask=totalInflow*TARGET;
@@ -330,9 +374,12 @@ function optimize(inflows,carryIn){
     if(bSi<0||bSc<=0)break;
     ac[ALL_SHIFTS[bSi].name]++;ALL_SHIFTS[bSi].hrs_today.forEach(h=>cov[h]++);
   }
-  const carryOut=calcCarryOut(ac),completed=dailyTask(cov,inflows);
-  let ft=0,pt=0;SHIFTS_FT.forEach(s=>ft+=ac[s.name]);SHIFTS_PT.forEach(s=>pt+=ac[s.name]);
-  return{shiftCounts:ac,coverage:cov,carryOut,totalCompleted:completed,totalInflow,
+  // Consolidate PT pairs → FT where possible
+  const mergedSc = consolidatePTtoFT(ac);
+  const covMerged = calcCoverage(mergedSc, carryIn);
+  const carryOut=calcCarryOut(mergedSc),completed=dailyTask(covMerged,inflows);
+  let ft=0,pt=0;SHIFTS_FT.forEach(s=>ft+=mergedSc[s.name]);SHIFTS_PT.forEach(s=>pt+=mergedSc[s.name]);
+  return{shiftCounts:mergedSc,coverage:covMerged,carryOut,totalCompleted:completed,totalInflow,
     coverage_pct:completed/totalInflow,abandon_pct:Math.max(0,(totalInflow-completed)/totalInflow),ft,pt,weightedHC:ft+pt/2};
 }
 
@@ -416,7 +463,7 @@ function renderWeekGrid(){
   const summaryRows=[
     {label:'Inflow', fn:wd=>Math.round(getEff(wd.d).totalInflow).toLocaleString(), cls:'pw-inflow'},
     {label:'Total HC Order (KF)', fn:wd=>getEff(wd.d).weightedHC.toFixed(1), cls:'pw-hc'},
-    {label:'%Task Coverage (KF)', fn:wd=>{const e=getEff(wd.d);const ok=e.coverage_pct>=TARGET;return`<span style="color:${ok?'var(--success)':'var(--danger)'}">${(e.coverage_pct*100).toFixed(3)}</span>`;}, cls:'pw-cov'},
+    {label:'%Task Coverage (KF)', fn:wd=>{const e=getEff(wd.d);const ok=e.coverage_pct>=TARGET;return`<span style="color:${ok?'var(--success)':'var(--danger)'}">${(e.coverage_pct*100).toFixed(1)}%</span>`;}, cls:'pw-cov'},
   ];
 
   let tbody=`<tbody>`;
@@ -505,13 +552,14 @@ function renderDayDetail(){
   }).join('');
 }
 
-// ── RENDER SHIFT ───────────────────────────────────────────────────────────────
+// ── RENDER SHIFT PIVOT ────────────────────────────────────────────────────────
 function renderShiftBreakdown(){
+  if(!weekData.length)return;
   const d=parseInt(document.getElementById('shiftDaySelect').value);
   if(!weekData[d])return;
-  const wd=weekData[d],e=getEff(d),sc=e.shiftCounts;
-  const canEdit = currentRole==='owner'||currentRole==='editor';
+  const wd=weekData[d],e=getEff(d);
 
+  // KPI strip for selected day
   document.getElementById('shiftMetrics').innerHTML=`
     <div class="kpi-card"><div class="kpi-label">Total HC Order</div><div class="kpi-value kv-good">${e.weightedHC.toFixed(1)}</div><div class="kpi-sub">FT ${e.ft} · PT ${e.pt} (×½)</div></div>
     <div class="kpi-card"><div class="kpi-label">Fulltime</div><div class="kpi-value" style="color:var(--accent)">${e.ft}</div></div>
@@ -523,27 +571,65 @@ function renderShiftBreakdown(){
     `<strong>${wd.dateStr} · ${DOW_VN[wd.dow]}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;`+
     (coTotal>0?`Carry-over → ${addDays(wd.dateStr,1)}: <span class="carry-tag">${e.carryOut.map((v,h)=>v>0?h+'('+v+')':'').filter(Boolean).join(' ')}</span>`:'No carry-over to next day.');
 
-  document.getElementById('ftTbody').innerHTML=SHIFTS_FT.map(s=>{
-    const n=sc[s.name]||0;
-    return`<tr class="${n>0?'':'dim'}">
-      <td><strong>${s.name}</strong></td><td>${s.start%24}:00</td>
-      <td>${s.brk!==null?s.brk+':00':'–'}</td>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${s.hrs_today.map(h=>h).join(' ')||'–'}</td>
-      <td style="font-size:11px">${s.hrs_next.length?`<span class="carry-tag">${s.hrs_next.map(h=>h).join(' ')}</span>`:'–'}</td>
-      <td><input class="hc-input" type="number" min="0" value="${n}" ${!canEdit?'disabled':''} onchange="setShiftManual(${d},'${s.name}',this.value)"></td>
-    </tr>`;
-  }).join('');
+  // Build full week pivot
+  const pivot=document.getElementById('shiftPivot');
+  if(!pivot)return;
 
-  document.getElementById('ptTbody').innerHTML=SHIFTS_PT.map(s=>{
-    const n=sc[s.name]||0;
-    return`<tr class="${n>0?'':'dim'}">
-      <td><strong>${s.name}</strong></td><td>${s.start%24}:00</td><td>${(s.start+4)%24}:59</td>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${s.hrs_today.map(h=>h).join(' ')||'–'}</td>
-      <td style="font-size:11px">${s.hrs_next.length?`<span class="carry-tag">${s.hrs_next.map(h=>h).join(' ')}</span>`:'–'}</td>
-      <td><input class="hc-input" type="number" min="0" value="${n}" ${!canEdit?'disabled':''} onchange="setShiftManual(${d},'${s.name}',this.value)"></td>
-    </tr>`;
-  }).join('');
+  const evtColors={Normal:'#059669',Spike:'#dc2626','Spike-1':'#d97706','14th':'#2563eb','15th':'#2563eb','24th':'#7c3aed','25th':'#7c3aed',Sat:'#6b7280',Sun:'#6b7280'};
 
+  // Determine which shifts have >0 in ANY day (to hide empty rows)
+  const activeShifts=new Set();
+  weekData.forEach(w=>{
+    const sc=getEff(w.d).shiftCounts;
+    ALL_SHIFTS.forEach(s=>{if((sc[s.name]||0)>0)activeShifts.add(s.name);});
+  });
+
+  let thead=`<thead>
+    <tr class="pw-event">
+      <th class="pw-label-col"></th>
+      ${weekData.map(w=>{const c=evtColors[w.event]||'#6b7280';return`<th style="color:${c}">${w.event}</th>`;}).join('')}
+    </tr>
+    <tr class="pw-dow"><th class="pw-label-col"></th>${weekData.map(w=>`<th>${w.dowLabel}</th>`).join('')}</tr>
+    <tr class="pw-date"><th class="pw-label-col"></th>${weekData.map(w=>`<th>${w.dateStr}</th>`).join('')}</tr>
+  </thead>`;
+
+  // Summary rows
+  let tbody=`<tbody>
+    <tr class="pw-inflow"><td class="pw-label-col">Inflow</td>${weekData.map(w=>`<td>${Math.round(getEff(w.d).totalInflow).toLocaleString()}</td>`).join('')}</tr>
+    <tr class="pw-hc"><td class="pw-label-col">Total HC Order</td>${weekData.map(w=>`<td>${getEff(w.d).weightedHC.toFixed(1)}</td>`).join('')}</tr>
+    <tr class="pw-cov"><td class="pw-label-col">%Task Coverage (KF)</td>${weekData.map(w=>{const e2=getEff(w.d);const ok=e2.coverage_pct>=TARGET;return`<td><span style="color:${ok?'var(--success)':'var(--danger)'}">${(e2.coverage_pct*100).toFixed(1)}%</span></td>`;}).join('')}</tr>
+    <tr class="pw-section-hdr"><td class="pw-label-col">Breakdown by Shift</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
+
+  // FT section
+  const activeFT=SHIFTS_FT.filter(s=>activeShifts.has(s.name));
+  if(activeFT.length){
+    tbody+=`<tr class="pw-shift-group"><td class="pw-label-col pw-shift-type-label">S0*</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
+    activeFT.forEach(s=>{
+      const cells=weekData.map(w=>{
+        const n=getEff(w.d).shiftCounts[s.name]||0;
+        return`<td class="${n>0?'pw-shift-active':''}">${n>0?n.toFixed(1):''}</td>`;
+      }).join('');
+      tbody+=`<tr class="pw-shift"><td class="pw-label-col pw-shift-name">${s.name}</td>${cells}</tr>`;
+    });
+  }
+
+  // PT section
+  const activePT=SHIFTS_PT.filter(s=>activeShifts.has(s.name));
+  if(activePT.length){
+    tbody+=`<tr class="pw-shift-group"><td class="pw-label-col pw-shift-type-label">P (Parttime)</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
+    activePT.forEach(s=>{
+      const cells=weekData.map(w=>{
+        const n=getEff(w.d).shiftCounts[s.name]||0;
+        return`<td class="${n>0?'pw-shift-active':''}">${n>0?n.toFixed(1):''}</td>`;
+      }).join('');
+      tbody+=`<tr class="pw-shift"><td class="pw-label-col pw-shift-name">${s.name}</td>${cells}</tr>`;
+    });
+  }
+
+  tbody+=`</tbody>`;
+  pivot.innerHTML=thead+tbody;
+
+  // Shift coverage chart for selected day
   if(shiftChart)shiftChart.destroy();
   shiftChart=new Chart(document.getElementById('shiftChart'),{
     type:'bar',

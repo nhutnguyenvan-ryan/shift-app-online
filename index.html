@@ -206,27 +206,17 @@
   <!-- ── SHIFT TAB ── -->
   <div id="sec-shift" class="section">
     <div class="day-controls">
-      <div class="fg"><label>Select Day</label>
+      <div class="fg"><label>Select Day (for chart)</label>
         <select id="shiftDaySelect" onchange="renderShiftBreakdown()" class="day-select"></select>
       </div>
       <button class="btn-outline" onclick="resetShift()">↺ Reset to Optimal</button>
     </div>
     <div class="kpi-grid" id="shiftMetrics"></div>
     <div class="info-bar" id="shiftInfo"></div>
-    <div class="shift-grid">
-      <div class="table-card">
-        <div class="table-card-title">Fulltime Shifts</div>
-        <div class="table-scroll"><table class="data-table compact">
-          <thead><tr><th>Shift</th><th>Start</th><th>Break</th><th>Hours (today)</th><th>Carry-over</th><th>Count</th></tr></thead>
-          <tbody id="ftTbody"></tbody>
-        </table></div>
-      </div>
-      <div class="table-card">
-        <div class="table-card-title">Parttime Shifts</div>
-        <div class="table-scroll"><table class="data-table compact">
-          <thead><tr><th>Shift</th><th>Start</th><th>End</th><th>Hours (today)</th><th>Carry-over</th><th>Count</th></tr></thead>
-          <tbody id="ptTbody"></tbody>
-        </table></div>
+    <div class="table-card">
+      <div class="table-card-title">Optimized HC Order by Day — Breakdown by Shift</div>
+      <div class="table-scroll">
+        <table class="data-table pivot-week" id="shiftPivot"></table>
       </div>
     </div>
     <div class="chart-card">

@@ -301,6 +301,14 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14
 .sheet-divider{display:flex;align-items:center;gap:8px;padding:8px 16px;color:var(--text3);font-size:11px}
 .sheet-divider::before,.sheet-divider::after{content:'';flex:1;height:1px;background:var(--border)}
 
+.pivot-week .pw-shift-group td{font-size:9px;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--text3);background:var(--bg3);padding:4px 12px;font-weight:700;border-top:1px solid var(--border2)}
+.pivot-week .pw-shift-type-label{color:var(--text3)}
+.pivot-week .pw-shift td{color:var(--text2)}
+.pivot-week .pw-shift-name{font-weight:700;color:var(--text)!important;font-family:var(--mono)}
+.pivot-week .pw-shift-active{color:var(--text)!important;font-weight:700}
+.pivot-week tr.pw-shift:hover td,.pivot-week tr.pw-shift:hover .pw-label-col{background:var(--bg3)}
+
 /* ── UTILS ── */
 .hidden{display:none!important}
 @media(max-width:900px){
