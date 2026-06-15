@@ -76,10 +76,18 @@
       <input type="number" id="targetCov" value="93" min="50" max="100" step="0.5">
     </div>
     <div class="param-sep"></div>
+    <button class="btn-outline" id="specialTargetBtn" onclick="toggleSpecialTargets()">🎯 Special Day Targets</button>
+    <div class="param-sep"></div>
     <button class="btn-run" id="runBtn" onclick="calcWeek()">
       <span class="btn-run-icon">▶</span> Run Optimizer
     </button>
     <button class="btn-save hidden" id="saveBtn" onclick="saveConfig()">💾 Save</button>
+  </div>
+
+  <!-- SPECIAL DAY TARGETS PANEL -->
+  <div class="special-target-panel hidden" id="specialTargetPanel">
+    <div class="stp-title">Coverage Target riêng cho từng loại ngày đặc biệt <span class="stp-sub">(để trống = dùng Coverage Target chung)</span></div>
+    <div class="stp-grid" id="specialTargetGrid"></div>
   </div>
 
   <!-- TABS -->

@@ -3,6 +3,8 @@ let currentRole = 'viewer';
 let currentUser = null;
 let HOUR_PROD = 1224;
 let TARGET = 0.93;
+// Per-event-type target coverage overrides (null = use default TARGET)
+let EVENT_TARGETS = {Normal:null,Spike:null,'Spike-1':null,'14th':null,'15th':null,'24th':null,'25th':null,Sat:null,Sun:null};
 let inflowData = {}, enqueueData = {};
 let weekData = [], manualShift = {};
 let weekChart = null, shiftChart = null;
@@ -10,6 +12,7 @@ let weekChart = null, shiftChart = null;
 // ── INIT ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
   await fetchMe();
+  renderSpecialTargetGrid();
   await loadSharedConfig();
   updateDerived();
 });
@@ -44,7 +47,7 @@ function applyRole() {
   }
 
   // Disable inputs for viewers
-  const inputs = document.querySelectorAll('.param-bar input, .hc-input, #newEditorEmail');
+  const inputs = document.querySelectorAll('.param-bar input, .hc-input, #newEditorEmail, #specialTargetGrid input');
   inputs.forEach(el => el.disabled = !canEdit);
   document.getElementById('runBtn').disabled = !canEdit;
   document.getElementById('saveBtn').classList.toggle('hidden', !canEdit);
@@ -66,12 +69,36 @@ function updateDerived() {
   document.getElementById('dpDisplay').textContent = (HOUR_PROD * 8).toLocaleString();
 }
 
+// ── SPECIAL DAY TARGETS ───────────────────────────────────────────────────────
+const SPECIAL_EVENTS=['Spike-1','Spike','14th','15th','24th','25th'];
+function renderSpecialTargetGrid(){
+  const grid=document.getElementById('specialTargetGrid');
+  if(!grid)return;
+  grid.innerHTML=SPECIAL_EVENTS.map(ev=>{
+    const v=EVENT_TARGETS[ev];
+    return`<div class="stp-item">
+      <label>${ev}</label>
+      <input type="number" min="50" max="100" step="0.1" placeholder="—"
+        value="${v!==null&&v!==undefined?(v*100):''}"
+        data-event="${ev}" onchange="setEventTarget('${ev}',this.value)">
+    </div>`;
+  }).join('');
+}
+function setEventTarget(ev,val){
+  const n=parseFloat(val);
+  EVENT_TARGETS[ev]=(val===''||isNaN(n))?null:(n/100);
+}
+function toggleSpecialTargets(){
+  document.getElementById('specialTargetPanel').classList.toggle('hidden');
+}
+
 // ── CONFIG SAVE / LOAD ────────────────────────────────────────────────────────
 async function saveConfig() {
   const config = {
     aht: document.getElementById('ahtInput').value,
     util: document.getElementById('utilInput').value,
     target: document.getElementById('targetCov').value,
+    eventTargets: EVENT_TARGETS,
     inflowData, enqueueData,
     sheetUrlInflow: window._sheetUrlInflow||'',
     sheetUrlEnqueue: window._sheetUrlEnqueue||''
@@ -91,6 +118,7 @@ async function loadSharedConfig() {
   if (config.aht) document.getElementById('ahtInput').value = config.aht;
   if (config.util) document.getElementById('utilInput').value = config.util;
   if (config.target) document.getElementById('targetCov').value = config.target;
+  if (config.eventTargets) { Object.assign(EVENT_TARGETS, config.eventTargets); renderSpecialTargetGrid(); }
   if (config.inflowData) inflowData = config.inflowData;
   if (config.enqueueData) enqueueData = config.enqueueData;
   if (config.sheetUrlInflow){window._sheetUrlInflow=config.sheetUrlInflow;const el=document.getElementById('sheetUrlInflow');if(el)el.value=config.sheetUrlInflow;}
@@ -357,9 +385,9 @@ function consolidatePTtoFT(sc) {
   return result;
 }
 
-function optimize(inflows,carryIn){
+function optimize(inflows,carryIn,target){
   const totalInflow=inflows.reduce((a,b)=>a+b,0);
-  const targetTask=totalInflow*TARGET;
+  const targetTask=totalInflow*(target!==undefined?target:TARGET);
   const ac={};ALL_SHIFTS.forEach(s=>ac[s.name]=0);
   const cov=new Array(24).fill(0);
   if(carryIn)for(let h=0;h<24;h++)cov[h]+=carryIn[h]||0;
@@ -403,6 +431,11 @@ const DOW_LABELS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DOW_VN=['Chủ Nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'];
 const EVT_COLORS={Normal:{bg:'rgba(52,216,158,.15)',text:'#34d89e'},Spike:{bg:'rgba(255,91,91,.15)',text:'#ff5b5b'},'Spike-1':{bg:'rgba(255,180,50,.15)',text:'#ffb432'},'14th':{bg:'rgba(91,143,255,.15)',text:'#5b8fff'},'15th':{bg:'rgba(91,143,255,.15)',text:'#5b8fff'},'24th':{bg:'rgba(200,100,200,.15)',text:'#c864c8'},'25th':{bg:'rgba(200,100,200,.15)',text:'#c864c8'},Sat:{bg:'rgba(255,255,255,.06)',text:'#8b90a8'},Sun:{bg:'rgba(255,255,255,.06)',text:'#8b90a8'}};
 
+function getTargetFor(event){
+  const v=EVENT_TARGETS[event];
+  return (v!==null&&v!==undefined&&!isNaN(v))?v:TARGET;
+}
+
 // ── MAIN CALC ──────────────────────────────────────────────────────────────────
 function calcWeek() {
   updateDerived();
@@ -416,8 +449,9 @@ function calcWeek() {
     let enq=enqueueData[ds]||(ENQUEUE_DEFAULT[event]||ENQUEUE_DEFAULT.Normal);
     const sum=enq.reduce((a,b)=>a+b,0);if(sum>0)enq=enq.map(v=>v/sum);
     const hourInflows=enq.map(p=>inflow*p);
-    const opt=optimize(hourInflows,prevCarryOut);
-    weekData.push({d:idx,dateStr:ds,dow,event,inflow,hourInflows,enq,opt,carryIn:[...prevCarryOut],dowLabel:DOW_LABELS[dow]});
+    const eventTarget=getTargetFor(event);
+    const opt=optimize(hourInflows,prevCarryOut,eventTarget);
+    weekData.push({d:idx,dateStr:ds,dow,event,inflow,hourInflows,enq,opt,carryIn:[...prevCarryOut],dowLabel:DOW_LABELS[dow],eventTarget});
     prevCarryOut=opt.carryOut; manualShift[idx]=null;
   });
   populateSelects(); renderWeekGrid(); renderDayDetail(); renderShiftBreakdown();
@@ -463,7 +497,7 @@ function renderWeekGrid(){
   const summaryRows=[
     {label:'Inflow', fn:wd=>Math.round(getEff(wd.d).totalInflow).toLocaleString(), cls:'pw-inflow'},
     {label:'Total HC Order (KF)', fn:wd=>getEff(wd.d).weightedHC.toFixed(1), cls:'pw-hc'},
-    {label:'%Task Coverage (KF)', fn:wd=>{const e=getEff(wd.d);const ok=e.coverage_pct>=TARGET;return`<span style="color:${ok?'var(--success)':'var(--danger)'}">${(e.coverage_pct*100).toFixed(1)}%</span>`;}, cls:'pw-cov'},
+    {label:'%Task Coverage (KF)', fn:wd=>{const e=getEff(wd.d);const ok=e.coverage_pct>=wd.eventTarget;return`<span style="color:${ok?'var(--success)':'var(--danger)'}">${(e.coverage_pct*100).toFixed(1)}%</span>`;}, cls:'pw-cov'},
   ];
 
   let tbody=`<tbody>`;
@@ -519,17 +553,18 @@ function renderDayDetail(){
   const carryTotal=wd.carryIn.reduce((a,b)=>a+b,0);
   const saved=naive-e.weightedHC;
 
+  const et=wd.eventTarget;
   document.getElementById('dayMetrics').innerHTML=`
     <div class="kpi-card"><div class="kpi-label">Optimized HC</div><div class="kpi-value kv-good">${e.weightedHC.toFixed(1)}</div><div class="kpi-sub">FT ${e.ft} · PT ${e.pt} (×½)</div></div>
     <div class="kpi-card"><div class="kpi-label">HC @ 100% baseline</div><div class="kpi-value kv-dim">${naive}</div><div class="kpi-sub">saved ${saved>0?saved.toFixed(1)+' HC':'–'}</div></div>
-    <div class="kpi-card"><div class="kpi-label">%Task Coverage</div><div class="kpi-value ${e.coverage_pct>=TARGET?'kv-good':'kv-bad'}">${(e.coverage_pct*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(TARGET*100).toFixed(0)}%</div></div>
-    <div class="kpi-card"><div class="kpi-label">%Abandon</div><div class="kpi-value ${e.abandon_pct<1-TARGET?'kv-good':'kv-bad'}">${(e.abandon_pct*100).toFixed(1)}%</div><div class="kpi-sub">daily level</div></div>`;
+    <div class="kpi-card"><div class="kpi-label">%Task Coverage</div><div class="kpi-value ${e.coverage_pct>=et?'kv-good':'kv-bad'}">${(e.coverage_pct*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(et*100).toFixed(1)}%</div></div>
+    <div class="kpi-card"><div class="kpi-label">%Abandon</div><div class="kpi-value ${e.abandon_pct<1-et?'kv-good':'kv-bad'}">${(e.abandon_pct*100).toFixed(1)}%</div><div class="kpi-sub">daily level</div></div>`;
 
   const enqSrc=enqueueData[wd.dateStr]?'uploaded':'default ('+wd.event+')';
   document.getElementById('dayInfo').innerHTML=
     `<strong>${wd.dateStr} · ${DOW_VN[wd.dow]} · ${wd.event}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
      AHT <strong>${document.getElementById('ahtInput').value}s</strong> · Util <strong>${document.getElementById('utilInput').value}%</strong> · HourProd <strong>${HOUR_PROD.toLocaleString()}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
-     Inflow <strong>${Math.round(wd.inflow).toLocaleString()}</strong> · Target <strong>${Math.round(wd.inflow*TARGET).toLocaleString()}</strong> · Completed <strong>${Math.round(e.totalCompleted).toLocaleString()}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
+     Inflow <strong>${Math.round(wd.inflow).toLocaleString()}</strong> · Target (${(et*100).toFixed(1)}%) <strong>${Math.round(wd.inflow*et).toLocaleString()}</strong> · Completed <strong>${Math.round(e.totalCompleted).toLocaleString()}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
      %Enqueue: <strong>${enqSrc}</strong>${carryTotal>0?`&nbsp;&nbsp;|&nbsp;&nbsp;Carry-in: <span class="carry-tag">${carryTotal} agent-hrs</span>`:''}`;
 
   const canEdit = currentRole==='owner'||currentRole==='editor';
@@ -537,7 +572,7 @@ function renderDayDetail(){
     const cov=e.coverage[h]||0,carryH=wd.carryIn[h]||0;
     const task=Math.min(cov*HOUR_PROD,inf),ab=Math.max(inf-cov*HOUR_PROD,0);
     const covPct=inf>0?task/inf:1,abPct=inf>0?ab/inf:0;
-    const kpiOk=covPct>=TARGET;
+    const kpiOk=covPct>=et;
     const kpi=cov===0&&inf===0?`<span class="badge badge-gray">–</span>`:kpiOk?`<span class="badge badge-green">✓ OK</span>`:covPct>=0.7?`<span class="badge badge-amber">⚠ Low</span>`:`<span class="badge badge-red">✗ Miss</span>`;
     return`<tr>
       <td><strong>${h}:00</strong></td>
@@ -545,8 +580,8 @@ function renderDayDetail(){
       <td>${Math.round(inf).toLocaleString()}</td>
       <td><span class="badge badge-blue">${cov}</span>${carryH>0?`<span class="carry-tag">+${carryH}↩</span>`:''}</td>
       <td>${Math.round(task).toLocaleString()}</td>
-      <td><span class="badge ${covPct>=TARGET?'badge-green':covPct>=0.7?'badge-amber':'badge-red'}">${(covPct*100).toFixed(1)}%</span></td>
-      <td><span class="badge ${abPct<1-TARGET?'badge-green':abPct<0.3?'badge-amber':'badge-red'}">${(abPct*100).toFixed(1)}%</span></td>
+      <td><span class="badge ${covPct>=et?'badge-green':covPct>=0.7?'badge-amber':'badge-red'}">${(covPct*100).toFixed(1)}%</span></td>
+      <td><span class="badge ${abPct<1-et?'badge-green':abPct<0.3?'badge-amber':'badge-red'}">${(abPct*100).toFixed(1)}%</span></td>
       <td>${kpi}</td>
     </tr>`;
   }).join('');
@@ -564,7 +599,7 @@ function renderShiftBreakdown(){
     <div class="kpi-card"><div class="kpi-label">Total HC Order</div><div class="kpi-value kv-good">${e.weightedHC.toFixed(1)}</div><div class="kpi-sub">FT ${e.ft} · PT ${e.pt} (×½)</div></div>
     <div class="kpi-card"><div class="kpi-label">Fulltime</div><div class="kpi-value" style="color:var(--accent)">${e.ft}</div></div>
     <div class="kpi-card"><div class="kpi-label">Parttime</div><div class="kpi-value" style="color:var(--accent2)">${e.pt}</div><div class="kpi-sub">×½ in HC formula</div></div>
-    <div class="kpi-card"><div class="kpi-label">Coverage (daily)</div><div class="kpi-value ${e.coverage_pct>=TARGET?'kv-good':'kv-bad'}">${(e.coverage_pct*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(TARGET*100).toFixed(0)}%</div></div>`;
+    <div class="kpi-card"><div class="kpi-label">Coverage (daily)</div><div class="kpi-value ${e.coverage_pct>=wd.eventTarget?'kv-good':'kv-bad'}">${(e.coverage_pct*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(wd.eventTarget*100).toFixed(1)}%</div></div>`;
 
   const coTotal=e.carryOut.reduce((a,b)=>a+b,0);
   document.getElementById('shiftInfo').innerHTML=
@@ -597,7 +632,7 @@ function renderShiftBreakdown(){
   let tbody=`<tbody>
     <tr class="pw-inflow"><td class="pw-label-col">Inflow</td>${weekData.map(w=>`<td>${Math.round(getEff(w.d).totalInflow).toLocaleString()}</td>`).join('')}</tr>
     <tr class="pw-hc"><td class="pw-label-col">Total HC Order</td>${weekData.map(w=>`<td>${getEff(w.d).weightedHC.toFixed(1)}</td>`).join('')}</tr>
-    <tr class="pw-cov"><td class="pw-label-col">%Task Coverage (KF)</td>${weekData.map(w=>{const e2=getEff(w.d);const ok=e2.coverage_pct>=TARGET;return`<td><span style="color:${ok?'var(--success)':'var(--danger)'}">${(e2.coverage_pct*100).toFixed(1)}%</span></td>`;}).join('')}</tr>
+    <tr class="pw-cov"><td class="pw-label-col">%Task Coverage (KF)</td>${weekData.map(w=>{const e2=getEff(w.d);const ok=e2.coverage_pct>=w.eventTarget;return`<td><span style="color:${ok?'var(--success)':'var(--danger)'}">${(e2.coverage_pct*100).toFixed(1)}%</span></td>`;}).join('')}</tr>
     <tr class="pw-section-hdr"><td class="pw-label-col">Breakdown by Shift</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
 
   // FT section

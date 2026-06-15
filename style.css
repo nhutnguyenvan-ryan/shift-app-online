@@ -309,6 +309,19 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14
 .pivot-week .pw-shift-active{color:var(--text)!important;font-weight:700}
 .pivot-week tr.pw-shift:hover td,.pivot-week tr.pw-shift:hover .pw-label-col{background:var(--bg3)}
 
+/* ── SPECIAL DAY TARGETS PANEL ── */
+.special-target-panel{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
+  margin:0 0 1rem;padding:14px 16px}
+.stp-title{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px}
+.stp-sub{font-size:11px;color:var(--text3);font-weight:400}
+.stp-grid{display:flex;flex-wrap:wrap;gap:12px}
+.stp-item{display:flex;flex-direction:column;gap:4px;min-width:90px}
+.stp-item label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:600}
+.stp-item input{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);
+  color:var(--text);padding:6px 8px;font-size:13px;font-family:var(--mono);outline:none;width:100%}
+.stp-item input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+.stp-item input::placeholder{color:var(--text3);font-family:var(--sans)}
+
 /* ── UTILS ── */
 .hidden{display:none!important}
 @media(max-width:900px){
