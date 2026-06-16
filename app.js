@@ -283,67 +283,54 @@ function isAppsScriptURL(url){
 
 async function fetchSheetData(type){
   const inputId=type==='inflow'?'sheetUrlInflow':'sheetUrlEnqueue';
-  const url=document.getElementById(inputId).value.trim();
-  if(!url){setStatus(type,'⚠ Nhập URL trước','err');return;}
-  setStatus(type,'⏳ Đang tải dữ liệu…','');
+  const raw=document.getElementById(inputId).value.trim();
+  if(!raw){setStatus(type,'⚠ Nhập Spreadsheet URL hoặc ID trước','err');return;}
+
+  // Lấy spreadsheetId từ URL hoặc raw ID
+  let spreadsheetId='';
+  const m=raw.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if(m) spreadsheetId=m[1];
+  else if(/^[a-zA-Z0-9_-]{20,}$/.test(raw)) spreadsheetId=raw;
+  else{setStatus(type,'❌ URL không hợp lệ — cần link Google Sheets hoặc Spreadsheet ID','err');return;}
+
+  const sheetName=type==='inflow'
+    ?(document.getElementById('sheetNameInflow')||{value:'Inflow'}).value||'Inflow'
+    :(document.getElementById('sheetNameEnqueue')||{value:'Enqueue'}).value||'Enqueue';
+
+  setStatus(type,'⏳ Đang tải từ Google Sheets…','');
   try{
-    if(isAppsScriptURL(url)){
-      // ── Apps Script Web App → fetch qua server proxy để tránh CORS ──
-      const proxyUrl=`/api/fetch-sheet?type=${type}&url=${encodeURIComponent(url)}`;
-      const res=await fetch(proxyUrl);
-      if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||`HTTP ${res.status}`);}
-      const contentType=res.headers.get('content-type')||'';
-      if(contentType.includes('json')){
-        const json=await res.json();
-        if(json.error)throw new Error(json.error);
-        if(type==='inflow')parseInflowJSON(Array.isArray(json)?json:[json]);
-        else parseEnqueueJSON(Array.isArray(json)?json:[json]);
-      }else{
-        const text=await res.text();
-        if(text.includes('<html'))throw new Error('Apps Script trả về trang login — kiểm tra lại cài đặt Deploy (Execute as: Me, Access: Anyone)');
-        parseCSV(text,type);
-      }
-    }else{
-      // ── Public CSV export ──
-      const csvUrl=sheetsToCSV(url);
-      if(!csvUrl)throw new Error('URL không hợp lệ — cần link Google Sheets hoặc Apps Script Web App');
-      const res=await fetch(`/api/fetch-sheet?type=${type}&url=${encodeURIComponent(csvUrl)}`);
-      if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||`HTTP ${res.status}`);}
-      const text=await res.text();
-      if(text.includes('<html'))throw new Error('Sheet chưa được chia sẻ công khai');
-      parseCSV(text,type);
-    }
-    if(type==='inflow')window._sheetUrlInflow=url;
-    else window._sheetUrlEnqueue=url;
+    const res=await fetch(`/api/fetch-sheet?type=${type}&spreadsheetId=${encodeURIComponent(spreadsheetId)}&sheet=${encodeURIComponent(sheetName)}`);
+    const json=await res.json();
+    if(!res.ok||json.error)throw new Error(json.error||`HTTP ${res.status}`);
+    if(type==='inflow')parseInflowJSON(Array.isArray(json)?json:[json]);
+    else parseEnqueueJSON(Array.isArray(json)?json:[json]);
+    if(type==='inflow'){window._sheetUrlInflow=raw;window._sheetNameInflow=sheetName;}
+    else{window._sheetUrlEnqueue=raw;window._sheetNameEnqueue=sheetName;}
   }catch(err){
     setStatus(type,`❌ ${err.message}`,'err');
   }
 }
 
-// Parse JSON từ Apps Script: [{date:"08.06.2026", inflow:80535}, ...]
 function parseInflowJSON(rows){
-  inflowData = {};
-  let ok=0;
+  inflowData={};let ok=0;
   rows.forEach(r=>{
     const ds=String(r.date||r.Date||'').trim();
     const val=parseFloat(r.inflow||r.Inflow||0);
     if(ds&&!isNaN(val)){inflowData[ds]=val;ok++;}
   });
-  setStatus('inflow',`✅ Loaded ${ok} days (Apps Script)`,'ok');
-  renderPreview('inflow', Object.entries(inflowData).slice(0,5).map(([d,v])=>({Date:d,Inflow:Math.round(v).toLocaleString()})));
+  setStatus('inflow',`✅ Loaded ${ok} days từ Google Sheets`,'ok');
+  renderPreview('inflow',Object.entries(inflowData).slice(0,5).map(([d,v])=>({Date:d,Inflow:Math.round(v).toLocaleString()})));
 }
 
-// Parse JSON từ Apps Script: [{date:"08.06.2026", h0:0.034, h1:0.029, ...}, ...]
 function parseEnqueueJSON(rows){
-  enqueueData = {};
-  let ok=0;
+  enqueueData={};let ok=0;
   rows.forEach(r=>{
     const ds=String(r.date||r.Date||'').trim();
     const arr=Array.from({length:24},(_,h)=>parseFloat(r['h'+h]||r['H'+h]||0));
     if(ds&&arr.some(v=>v>0)){enqueueData[ds]=arr;ok++;}
   });
-  setStatus('enqueue',`✅ Loaded ${ok} days (Apps Script)`,'ok');
-  const prev = Object.entries(enqueueData).slice(0,3).map(([d,arr])=>({Date:d,'h0':(arr[0]*100).toFixed(1)+'%','h9':(arr[9]*100).toFixed(1)+'%','h12':(arr[12]*100).toFixed(1)+'%','h18':(arr[18]*100).toFixed(1)+'%','…':'…'}));
+  setStatus('enqueue',`✅ Loaded ${ok} days từ Google Sheets`,'ok');
+  const prev=Object.entries(enqueueData).slice(0,3).map(([d,arr])=>({Date:d,'h0':(arr[0]*100).toFixed(1)+'%','h9':(arr[9]*100).toFixed(1)+'%','h12':(arr[12]*100).toFixed(1)+'%','h18':(arr[18]*100).toFixed(1)+'%','…':'…'}));
   renderPreview('enqueue',prev);
 }
 

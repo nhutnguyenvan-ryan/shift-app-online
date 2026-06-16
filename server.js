@@ -13,7 +13,6 @@ const fs         = require('fs');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// Render chạy sau reverse proxy — bắt buộc để cookie secure hoạt động
 app.set('trust proxy', 1);
 
 // ── DATABASE ──────────────────────────────────────────────────────────────────
@@ -25,12 +24,11 @@ if (process.env.DATABASE_URL) {
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
   });
-  // Tạo bảng kv_store (data) và session (connect-pg-simple)
   db.query(`
     CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT);
     CREATE TABLE IF NOT EXISTS "session" (
-      "sid"    varchar   NOT NULL COLLATE "default",
-      "sess"   json      NOT NULL,
+      "sid"    varchar      NOT NULL COLLATE "default",
+      "sess"   json         NOT NULL,
       "expire" timestamp(6) NOT NULL,
       CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
     );
@@ -52,23 +50,19 @@ async function dbSet(key, value) {
   );
 }
 
-// ── SESSION — lưu vào PostgreSQL nếu có DB, fallback MemoryStore ─────────────
+// ── SESSION ───────────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 
 const sessionStore = db
   ? new PgSession({ pool: db, tableName: 'session', createTableIfMissing: true })
-  : undefined; // undefined = MemoryStore (chỉ dùng khi dev local)
+  : undefined;
 
 app.use(session({
   store:             sessionStore,
   secret:            process.env.SESSION_SECRET || 'shiftiq-dev-secret',
   resave:            false,
   saveUninitialized: false,
-  cookie: {
-    secure:   true,   // HTTPS only (Render luôn HTTPS)
-    sameSite: 'lax',  // cho phép redirect sau OAuth
-    maxAge:   7 * 24 * 60 * 60 * 1000
-  }
+  cookie: { secure: true, sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 }
 }));
 
 // ── PASSPORT ──────────────────────────────────────────────────────────────────
@@ -87,7 +81,6 @@ passport.use(new GoogleStrategy({
 
 passport.serializeUser((user, done)   => done(null, user));
 passport.deserializeUser((user, done) => done(null, user));
-
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -95,18 +88,14 @@ app.use(passport.session());
 app.get('/auth/google',
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
-
 app.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/?error=auth_failed' }),
   (req, res) => {
-    console.log('OAuth OK | user:', req.user?.email, '| sid:', req.sessionID);
+    console.log('OAuth OK | user:', req.user?.email);
     res.redirect('/');
   }
 );
-
-app.get('/auth/logout', (req, res) => {
-  req.logout(() => res.redirect('/'));
-});
+app.get('/auth/logout', (req, res) => req.logout(() => res.redirect('/')));
 
 // ── ROLE ──────────────────────────────────────────────────────────────────────
 async function getRole(email) {
@@ -119,34 +108,122 @@ async function getRole(email) {
   return 'viewer';
 }
 
-// ── API ───────────────────────────────────────────────────────────────────────
+// ── GOOGLE SHEETS API via Service Account ─────────────────────────────────────
+// Tạo JWT access token từ Service Account key (không cần thư viện nặng)
+async function getServiceAccountToken() {
+  const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  if (!keyJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY chưa được set trong Environment Variables');
+
+  let key;
+  try { key = JSON.parse(keyJson); }
+  catch { throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY không phải JSON hợp lệ'); }
+
+  const now   = Math.floor(Date.now() / 1000);
+  const claim = {
+    iss:   key.client_email,
+    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+    aud:   'https://oauth2.googleapis.com/token',
+    iat:   now,
+    exp:   now + 3600
+  };
+
+  // Tạo JWT bằng crypto (built-in Node.js, không cần thư viện)
+  const crypto = require('crypto');
+  const header  = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify(claim)).toString('base64url');
+  const toSign  = `${header}.${payload}`;
+
+  // Private key từ service account JSON
+  const privateKey = key.private_key;
+  const sign = crypto.createSign('RSA-SHA256');
+  sign.update(toSign);
+  const signature = sign.sign(privateKey, 'base64url');
+  const jwt = `${toSign}.${signature}`;
+
+  // Đổi JWT → access token
+  const { default: fetch } = await import('node-fetch');
+  const resp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion:  jwt
+    })
+  });
+  const data = await resp.json();
+  if (!data.access_token) throw new Error('Không lấy được token: ' + JSON.stringify(data));
+  return data.access_token;
+}
+
+// Đọc 1 sheet từ Spreadsheet ID + tên tab, trả về mảng rows [{col:val,...}]
+async function readSheet(spreadsheetId, sheetName) {
+  const token = await getServiceAccountToken();
+  const { default: fetch } = await import('node-fetch');
+  const range = encodeURIComponent(`${sheetName}!A:Z`);
+  const url   = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+  const resp  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const data  = await resp.json();
+  if (data.error) throw new Error(`Sheets API: ${data.error.message}`);
+  const [headers, ...rows] = data.values || [];
+  if (!headers) return [];
+  return rows.map(r => Object.fromEntries(headers.map((h, i) => [h.trim(), r[i] ?? ''])));
+}
+
+// Parse Spreadsheet ID từ URL hoặc raw ID
+function parseSpreadsheetId(urlOrId) {
+  const m = urlOrId.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (m) return m[1];
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(urlOrId.trim())) return urlOrId.trim();
+  return null;
+}
+
+// ── API: FETCH SHEET (Service Account) ───────────────────────────────────────
+// GET /api/fetch-sheet?spreadsheetId=...&sheet=Inflow&type=inflow
+// hoặc  ?url=https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/...
+app.get('/api/fetch-sheet', async (req, res) => {
+  try {
+    // Lấy spreadsheetId từ param url hoặc spreadsheetId
+    let spreadsheetId = req.query.spreadsheetId;
+    if (!spreadsheetId && req.query.url) {
+      spreadsheetId = parseSpreadsheetId(req.query.url);
+    }
+    if (!spreadsheetId) {
+      return res.status(400).json({ error: 'Cần truyền spreadsheetId hoặc url chứa Spreadsheet ID' });
+    }
+
+    const type      = (req.query.type || 'inflow').toLowerCase();
+    const sheetName = req.query.sheet || (type === 'enqueue' ? 'Enqueue' : 'Inflow');
+
+    console.log(`fetch-sheet | type:${type} sheet:${sheetName} id:${spreadsheetId}`);
+    const rows = await readSheet(spreadsheetId, sheetName);
+
+    // Chuẩn hoá output giống format Apps Script cũ
+    if (type === 'enqueue') {
+      const out = rows.map(r => {
+        const rec = { date: r.date || r.Date || '' };
+        for (let h = 0; h < 24; h++) rec[`h${h}`] = parseFloat(r[`h${h}`] || r[`H${h}`] || 0) || 0;
+        return rec;
+      }).filter(r => r.date);
+      return res.json(out);
+    } else {
+      const out = rows.map(r => ({
+        date:   (r.date || r.Date || '').trim(),
+        inflow: parseFloat(r.inflow || r.Inflow || 0) || 0
+      })).filter(r => r.date && r.inflow);
+      return res.json(out);
+    }
+  } catch (err) {
+    console.error('fetch-sheet error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── API: CONFIG ───────────────────────────────────────────────────────────────
 app.get('/api/me', async (req, res) => {
-  console.log('/api/me | sid:', req.sessionID, '| user:', req.user?.email || 'none');
+  console.log('/api/me | user:', req.user?.email || 'none');
   const user = req.user || null;
   const role = user ? await getRole(user.email) : 'viewer';
   res.json({ user, role });
-});
-
-app.get('/api/fetch-sheet', async (req, res) => {
-  const targetUrl = req.query.url;
-  const type      = req.query.type || 'inflow';
-  if (!targetUrl) return res.status(400).json({ error: 'Missing url param' });
-  const allowed = /^https:\/\/(script\.google\.com|docs\.google\.com|sheets\.googleapis\.com)/;
-  if (!allowed.test(targetUrl)) return res.status(403).json({ error: 'URL không được phép' });
-  try {
-    const { default: fetch } = await import('node-fetch');
-    const upstream = await fetch(
-      targetUrl + (targetUrl.includes('?') ? '&' : '?') + 'type=' + type,
-      { headers: { Accept: 'application/json, text/csv, */*', 'User-Agent': 'ShiftIQ/1.0' }, redirect: 'follow' }
-    );
-    const ct   = upstream.headers.get('content-type') || '';
-    const text = await upstream.text();
-    if (!upstream.ok) return res.status(502).json({ error: `Upstream ${upstream.status}`, detail: text.slice(0,200) });
-    res.setHeader('Content-Type', ct || 'text/plain');
-    res.send(text);
-  } catch (err) {
-    res.status(502).json({ error: err.message });
-  }
 });
 
 app.get('/api/config', async (req, res) => {
@@ -185,7 +262,7 @@ app.delete('/api/users/editors/:email', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── STATIC — tìm index.html ở public/ hoặc root ──────────────────────────────
+// ── STATIC ────────────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
@@ -195,5 +272,4 @@ app.get('*', (_req, res) => {
   res.sendFile(fs.existsSync(inPublic) ? inPublic : inRoot);
 });
 
-// ── START ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => console.log(`ShiftIQ on port ${PORT}`));

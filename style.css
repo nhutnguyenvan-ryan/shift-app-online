@@ -298,7 +298,9 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14
 .btn-sheet{padding:6px 14px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-size:12px;font-weight:600;
   background:var(--accent);color:#fff;transition:opacity .15s;flex-shrink:0;font-family:var(--sans)}
 .btn-sheet:hover{opacity:.85}
-.sheet-divider{display:flex;align-items:center;gap:8px;padding:8px 16px;color:var(--text3);font-size:11px}
+.sheet-tab-input{width:90px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);
+  color:var(--text);padding:6px 8px;font-size:12px;font-family:var(--mono);outline:none;flex-shrink:0}
+.sheet-tab-input:focus{border-color:var(--accent)}
 .sheet-divider::before,.sheet-divider::after{content:'';flex:1;height:1px;background:var(--border)}
 
 .pivot-week .pw-shift-group td{font-size:9px;text-transform:uppercase;letter-spacing:.08em;

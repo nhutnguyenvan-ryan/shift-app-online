@@ -121,7 +121,8 @@
         <!-- Google Sheets input -->
         <div class="sheet-row">
           <span class="sheet-icon">📊</span>
-          <input type="url" id="sheetUrlInflow" class="sheet-input" placeholder="Sheets CSV link (public) hoặc Apps Script Web App URL (.../exec)">
+          <input type="url" id="sheetUrlInflow" class="sheet-input" placeholder="Link Google Sheets hoặc Spreadsheet ID">
+          <input type="text" id="sheetNameInflow" class="sheet-tab-input" placeholder="Tab name" value="Inflow">
           <button class="btn-sheet" onclick="fetchSheetData('inflow')">Fetch</button>
         </div>
         <div class="sheet-divider"><span>hoặc upload file</span></div>
@@ -149,7 +150,8 @@
         <!-- Google Sheets input -->
         <div class="sheet-row">
           <span class="sheet-icon">📊</span>
-          <input type="url" id="sheetUrlEnqueue" class="sheet-input" placeholder="Sheets CSV link hoặc Apps Script Web App URL (optional)">
+          <input type="url" id="sheetUrlEnqueue" class="sheet-input" placeholder="Link Google Sheets hoặc Spreadsheet ID (optional)">
+          <input type="text" id="sheetNameEnqueue" class="sheet-tab-input" placeholder="Tab name" value="Enqueue">
           <button class="btn-sheet" onclick="fetchSheetData('enqueue')">Fetch</button>
         </div>
         <div class="sheet-divider"><span>hoặc upload file</span></div>
