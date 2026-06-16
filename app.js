@@ -261,7 +261,7 @@ function downloadCSV(content, filename) {
 }
 
 // ── GOOGLE SHEETS IMPORT ──────────────────────────────────────────────────────
-// Converts various Sheets URL formats to CSV export URL
+// Converts various Sheets URL formats to CSV export URL (for public sheets)
 function sheetsToCSV(url, sheetName){
   let id='';
   const m=url.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
@@ -273,25 +273,67 @@ function sheetsToCSV(url, sheetName){
   return`https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
 }
 
+// Detect Apps Script Web App URL (https://script.google.com/macros/s/.../exec)
+function isAppsScriptURL(url){
+  return /script\.google(usercontent)?\.com\/macros\/s\/.+\/exec/.test(url.trim());
+}
+
 async function fetchSheetData(type){
   const inputId=type==='inflow'?'sheetUrlInflow':'sheetUrlEnqueue';
   const url=document.getElementById(inputId).value.trim();
-  if(!url){setStatus(type,'⚠ Nhập URL Google Sheet trước','err');return;}
-  const csvUrl=sheetsToCSV(url);
-  if(!csvUrl){setStatus(type,'❌ URL không hợp lệ — cần link Google Sheets','err');return;}
-  setStatus(type,'⏳ Đang tải dữ liệu từ Google Sheets…','');
+  if(!url){setStatus(type,'⚠ Nhập URL trước','err');return;}
+  setStatus(type,'⏳ Đang tải dữ liệu…','');
   try{
-    const res=await fetch(csvUrl);
-    if(!res.ok)throw new Error('HTTP '+res.status);
-    const text=await res.text();
-    if(text.includes('<html'))throw new Error('Sheet chưa được chia sẻ công khai');
-    parseCSV(text,type);
-    // Save URL to config alongside data
+    if(isAppsScriptURL(url)){
+      // ── Apps Script Web App → trả về JSON ──
+      const res=await fetch(url+(url.includes('?')?'&':'?')+'type='+type);
+      if(!res.ok)throw new Error('HTTP '+res.status);
+      const json=await res.json();
+      if(json.error)throw new Error(json.error);
+      if(type==='inflow')parseInflowJSON(json);
+      else parseEnqueueJSON(json);
+    }else{
+      // ── Public CSV export ──
+      const csvUrl=sheetsToCSV(url);
+      if(!csvUrl)throw new Error('URL không hợp lệ — cần link Google Sheets hoặc Apps Script Web App');
+      const res=await fetch(csvUrl);
+      if(!res.ok)throw new Error('HTTP '+res.status);
+      const text=await res.text();
+      if(text.includes('<html'))throw new Error('Sheet chưa được chia sẻ công khai');
+      parseCSV(text,type);
+    }
     if(type==='inflow')window._sheetUrlInflow=url;
     else window._sheetUrlEnqueue=url;
   }catch(err){
-    setStatus(type,`❌ Lỗi: ${err.message}. Đảm bảo sheet đã "Share → Anyone with the link → Viewer"`,'err');
+    setStatus(type,`❌ Lỗi: ${err.message}`,'err');
   }
+}
+
+// Parse JSON từ Apps Script: [{date:"08.06.2026", inflow:80535}, ...]
+function parseInflowJSON(rows){
+  inflowData = {};
+  let ok=0;
+  rows.forEach(r=>{
+    const ds=String(r.date||r.Date||'').trim();
+    const val=parseFloat(r.inflow||r.Inflow||0);
+    if(ds&&!isNaN(val)){inflowData[ds]=val;ok++;}
+  });
+  setStatus('inflow',`✅ Loaded ${ok} days (Apps Script)`,'ok');
+  renderPreview('inflow', Object.entries(inflowData).slice(0,5).map(([d,v])=>({Date:d,Inflow:Math.round(v).toLocaleString()})));
+}
+
+// Parse JSON từ Apps Script: [{date:"08.06.2026", h0:0.034, h1:0.029, ...}, ...]
+function parseEnqueueJSON(rows){
+  enqueueData = {};
+  let ok=0;
+  rows.forEach(r=>{
+    const ds=String(r.date||r.Date||'').trim();
+    const arr=Array.from({length:24},(_,h)=>parseFloat(r['h'+h]||r['H'+h]||0));
+    if(ds&&arr.some(v=>v>0)){enqueueData[ds]=arr;ok++;}
+  });
+  setStatus('enqueue',`✅ Loaded ${ok} days (Apps Script)`,'ok');
+  const prev = Object.entries(enqueueData).slice(0,3).map(([d,arr])=>({Date:d,'h0':(arr[0]*100).toFixed(1)+'%','h9':(arr[9]*100).toFixed(1)+'%','h12':(arr[12]*100).toFixed(1)+'%','h18':(arr[18]*100).toFixed(1)+'%','…':'…'}));
+  renderPreview('enqueue',prev);
 }
 
 async function refreshAllSheets(){
