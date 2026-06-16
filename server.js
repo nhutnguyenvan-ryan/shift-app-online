@@ -77,8 +77,11 @@ app.get('/auth/google',
 );
 
 app.get('/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/' }),
-  (req, res) => res.redirect('/')
+  passport.authenticate('google', { failureRedirect: '/?error=auth_failed' }),
+  (req, res) => {
+    console.log('OAuth callback OK | user:', req.user?.email, '| session:', req.sessionID);
+    res.redirect('/');
+  }
 );
 
 app.get('/auth/logout', (req, res) => {
@@ -98,6 +101,12 @@ async function getRole(email) {
 
 // ── API: ME ───────────────────────────────────────────────────────────────────
 app.get('/api/me', async (req, res) => {
+  const user = req.user || null;
+  const role = user ? await getRole(user.email) : 'viewer';
+  res.json({ user, role });
+});
+app.get('/api/me', async (req, res) => {
+  console.log('API /me | sessionID:', req.sessionID, '| user:', req.user?.email || 'none');
   const user = req.user || null;
   const role = user ? await getRole(user.email) : 'viewer';
   res.json({ user, role });
