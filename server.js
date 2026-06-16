@@ -1,29 +1,42 @@
 require('dotenv').config();
 console.log('ENV OWNER_EMAIL:', JSON.stringify(process.env.OWNER_EMAIL));
-const express = require('express');
-const session = require('express-session');
-const passport = require('passport');
-const { Strategy: GoogleStrategy } = require('passport-google-oauth20');
-const { Pool } = require('pg');
-const path = require('path');
 
-const app = express();
+const express    = require('express');
+const session    = require('express-session');
+const passport   = require('passport');
+const { Strategy: GoogleStrategy } = require('passport-google-oauth20');
+const { Pool }   = require('pg');
+const PgSession  = require('connect-pg-simple')(session);
+const path       = require('path');
+const fs         = require('fs');
+
+const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// Render chạy sau reverse proxy — bắt buộc để cookie secure hoạt động
+app.set('trust proxy', 1);
+
 // ── DATABASE ──────────────────────────────────────────────────────────────────
-// Dùng PostgreSQL trên Render (free tier), hoặc fallback in-memory nếu chưa có DB
 let db = null;
-let memStore = { config: null, editors: [], owner: process.env.OWNER_EMAIL || '' };
+const memStore = { config: null, editors: [] };
 
 if (process.env.DATABASE_URL) {
   db = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
   });
-  // Init tables
+  // Tạo bảng kv_store (data) và session (connect-pg-simple)
   db.query(`
     CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT);
-  `).catch(console.error);
+    CREATE TABLE IF NOT EXISTS "session" (
+      "sid"    varchar   NOT NULL COLLATE "default",
+      "sess"   json      NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+    );
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+  `).then(() => console.log('DB tables ready'))
+    .catch(e  => console.error('DB init error:', e.message));
 }
 
 async function dbGet(key) {
@@ -39,39 +52,46 @@ async function dbSet(key, value) {
   );
 }
 
-// ── SESSION ───────────────────────────────────────────────────────────────────
+// ── SESSION — lưu vào PostgreSQL nếu có DB, fallback MemoryStore ─────────────
 app.use(express.json({ limit: '10mb' }));
+
+const sessionStore = db
+  ? new PgSession({ pool: db, tableName: 'session', createTableIfMissing: true })
+  : undefined; // undefined = MemoryStore (chỉ dùng khi dev local)
+
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'shiftiq-secret-change-me',
-  resave: false,
+  store:             sessionStore,
+  secret:            process.env.SESSION_SECRET || 'shiftiq-dev-secret',
+  resave:            false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
+    secure:   true,   // HTTPS only (Render luôn HTTPS)
+    sameSite: 'lax',  // cho phép redirect sau OAuth
+    maxAge:   7 * 24 * 60 * 60 * 1000
   }
 }));
 
-// ── PASSPORT / GOOGLE OAUTH ───────────────────────────────────────────────────
+// ── PASSPORT ──────────────────────────────────────────────────────────────────
 passport.use(new GoogleStrategy({
-  clientID: process.env.GOOGLE_CLIENT_ID || 'PLACEHOLDER',
+  clientID:     process.env.GOOGLE_CLIENT_ID     || 'PLACEHOLDER',
   clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'PLACEHOLDER',
-  callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback'
-}, (accessToken, refreshToken, profile, done) => {
+  callbackURL:  process.env.GOOGLE_CALLBACK_URL  || '/auth/google/callback'
+}, (_at, _rt, profile, done) => {
   done(null, {
-    id: profile.id,
+    id:    profile.id,
     email: profile.emails?.[0]?.value || '',
-    name: profile.displayName,
+    name:  profile.displayName,
     photo: profile.photos?.[0]?.value || ''
   });
 }));
 
-passport.serializeUser((user, done) => done(null, user));
+passport.serializeUser((user, done)   => done(null, user));
 passport.deserializeUser((user, done) => done(null, user));
 
 app.use(passport.initialize());
 app.use(passport.session());
 
-// ── AUTH ROUTES ───────────────────────────────────────────────────────────────
+// ── AUTH ──────────────────────────────────────────────────────────────────────
 app.get('/auth/google',
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
@@ -79,7 +99,7 @@ app.get('/auth/google',
 app.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/?error=auth_failed' }),
   (req, res) => {
-    console.log('OAuth callback OK | user:', req.user?.email, '| session:', req.sessionID);
+    console.log('OAuth OK | user:', req.user?.email, '| sid:', req.sessionID);
     res.redirect('/');
   }
 );
@@ -88,98 +108,67 @@ app.get('/auth/logout', (req, res) => {
   req.logout(() => res.redirect('/'));
 });
 
-// ── ROLE HELPER ───────────────────────────────────────────────────────────────
+// ── ROLE ──────────────────────────────────────────────────────────────────────
 async function getRole(email) {
   if (!email) return 'viewer';
   const owner = await dbGet('owner') || process.env.OWNER_EMAIL || '';
-  console.log('DEBUG getRole | email:', email, '| owner:', owner);
+  console.log('getRole | email:', email, '| owner:', owner);
   if (email === owner) return 'owner';
   const editors = await dbGet('editors') || [];
   if (editors.includes(email)) return 'editor';
   return 'viewer';
 }
 
-// ── API: ME ───────────────────────────────────────────────────────────────────
+// ── API ───────────────────────────────────────────────────────────────────────
 app.get('/api/me', async (req, res) => {
-  const user = req.user || null;
-  const role = user ? await getRole(user.email) : 'viewer';
-  res.json({ user, role });
-});
-app.get('/api/me', async (req, res) => {
-  console.log('API /me | sessionID:', req.sessionID, '| user:', req.user?.email || 'none');
+  console.log('/api/me | sid:', req.sessionID, '| user:', req.user?.email || 'none');
   const user = req.user || null;
   const role = user ? await getRole(user.email) : 'viewer';
   res.json({ user, role });
 });
 
-// ── API: SHEET PROXY ──────────────────────────────────────────────────────────
-// Fetch Apps Script / Google Sheets URL phía server để tránh CORS
-// Client gọi: GET /api/fetch-sheet?url=...&type=inflow
 app.get('/api/fetch-sheet', async (req, res) => {
-  // Cho phép viewer fetch (chỉ đọc data)
   const targetUrl = req.query.url;
-  const type = req.query.type || 'inflow';
+  const type      = req.query.type || 'inflow';
   if (!targetUrl) return res.status(400).json({ error: 'Missing url param' });
-
-  // Chỉ cho phép fetch từ Google domains
   const allowed = /^https:\/\/(script\.google\.com|docs\.google\.com|sheets\.googleapis\.com)/;
-  if (!allowed.test(targetUrl)) {
-    return res.status(403).json({ error: 'URL không được phép — chỉ hỗ trợ Google domains' });
-  }
-
+  if (!allowed.test(targetUrl)) return res.status(403).json({ error: 'URL không được phép' });
   try {
-    const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
-    const upstream = await fetch(targetUrl + (targetUrl.includes('?') ? '&' : '?') + 'type=' + type, {
-      headers: {
-        'Accept': 'application/json, text/csv, text/plain, */*',
-        'User-Agent': 'ShiftIQ-Server/1.0'
-      },
-      redirect: 'follow'
-    });
-
-    const contentType = upstream.headers.get('content-type') || '';
+    const { default: fetch } = await import('node-fetch');
+    const upstream = await fetch(
+      targetUrl + (targetUrl.includes('?') ? '&' : '?') + 'type=' + type,
+      { headers: { Accept: 'application/json, text/csv, */*', 'User-Agent': 'ShiftIQ/1.0' }, redirect: 'follow' }
+    );
+    const ct   = upstream.headers.get('content-type') || '';
     const text = await upstream.text();
-
-    if (!upstream.ok) {
-      return res.status(502).json({ error: `Upstream HTTP ${upstream.status}`, detail: text.slice(0, 200) });
-    }
-
-    // Trả về raw text + content-type để client tự parse
-    res.setHeader('Content-Type', contentType || 'text/plain');
-    res.setHeader('X-Upstream-Status', upstream.status);
+    if (!upstream.ok) return res.status(502).json({ error: `Upstream ${upstream.status}`, detail: text.slice(0,200) });
+    res.setHeader('Content-Type', ct || 'text/plain');
     res.send(text);
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
 });
 
-// ── API: CONFIG ───────────────────────────────────────────────────────────────
 app.get('/api/config', async (req, res) => {
-  const config = await dbGet('config');
-  res.json({ config });
+  res.json({ config: await dbGet('config') });
 });
 
 app.post('/api/config', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const role = await getRole(req.user.email);
-  if (role === 'viewer') return res.status(403).json({ error: 'Forbidden' });
+  if (await getRole(req.user.email) === 'viewer') return res.status(403).json({ error: 'Forbidden' });
   await dbSet('config', req.body);
   res.json({ ok: true });
 });
 
-// ── API: USERS ────────────────────────────────────────────────────────────────
 app.get('/api/users', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const role = await getRole(req.user.email);
-  if (role !== 'owner') return res.status(403).json({ error: 'Forbidden' });
-  const editors = await dbGet('editors') || [];
-  res.json({ editors });
+  if (await getRole(req.user.email) !== 'owner') return res.status(403).json({ error: 'Forbidden' });
+  res.json({ editors: await dbGet('editors') || [] });
 });
 
 app.post('/api/users/editors', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const role = await getRole(req.user.email);
-  if (role !== 'owner') return res.status(403).json({ error: 'Forbidden' });
+  if (await getRole(req.user.email) !== 'owner') return res.status(403).json({ error: 'Forbidden' });
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
   const editors = await dbGet('editors') || [];
@@ -189,27 +178,22 @@ app.post('/api/users/editors', async (req, res) => {
 
 app.delete('/api/users/editors/:email', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const role = await getRole(req.user.email);
-  if (role !== 'owner') return res.status(403).json({ error: 'Forbidden' });
-  const email = decodeURIComponent(req.params.email);
+  if (await getRole(req.user.email) !== 'owner') return res.status(403).json({ error: 'Forbidden' });
+  const email   = decodeURIComponent(req.params.email);
   const editors = (await dbGet('editors') || []).filter(e => e !== email);
   await dbSet('editors', editors);
   res.json({ ok: true });
 });
 
-// ── STATIC FILES ──────────────────────────────────────────────────────────────
+// ── STATIC — tìm index.html ở public/ hoặc root ──────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(__dirname));
 
-// SPA fallback
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+app.get('*', (_req, res) => {
+  const inPublic = path.join(__dirname, 'public', 'index.html');
+  const inRoot   = path.join(__dirname, 'index.html');
+  res.sendFile(fs.existsSync(inPublic) ? inPublic : inRoot);
 });
 
 // ── START ─────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`ShiftIQ running on port ${PORT}`);
-  if (!process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID === 'PLACEHOLDER') {
-    console.warn('⚠️  GOOGLE_CLIENT_ID chưa được set — Google OAuth sẽ không hoạt động');
-  }
-});
+app.listen(PORT, () => console.log(`ShiftIQ on port ${PORT}`));
