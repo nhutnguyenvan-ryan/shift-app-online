@@ -88,6 +88,7 @@ app.get('/auth/logout', (req, res) => {
 async function getRole(email) {
   if (!email) return 'viewer';
   const owner = await dbGet('owner') || process.env.OWNER_EMAIL || '';
+  console.log('DEBUG getRole:', email, '| owner:', owner); // ← thêm dòng này
   if (email === owner) return 'owner';
   const editors = await dbGet('editors') || [];
   if (editors.includes(email)) return 'editor';
