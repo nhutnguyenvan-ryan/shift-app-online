@@ -197,18 +197,21 @@ app.get('/api/fetch-sheet', async (req, res) => {
     console.log(`fetch-sheet | type:${type} sheet:${sheetName} id:${spreadsheetId}`);
     const rows = await readSheet(spreadsheetId, sheetName);
 
-    // Chuẩn hoá output giống format Apps Script cũ
+    // Helper: parse số với cả dấu chấm và dấu phẩy thập phân (vd: "0,034" → 0.034)
+    const parseNum = v => parseFloat(String(v ?? '0').replace(',', '.')) || 0;
+
+    // Chuẩn hoá output
     if (type === 'enqueue') {
       const out = rows.map(r => {
-        const rec = { date: r.date || r.Date || '' };
-        for (let h = 0; h < 24; h++) rec[`h${h}`] = parseFloat(r[`h${h}`] || r[`H${h}`] || 0) || 0;
+        const rec = { date: (r.date || r.Date || '').trim() };
+        for (let h = 0; h < 24; h++) rec[`h${h}`] = parseNum(r[`h${h}`] || r[`H${h}`]);
         return rec;
       }).filter(r => r.date);
       return res.json(out);
     } else {
       const out = rows.map(r => ({
         date:   (r.date || r.Date || '').trim(),
-        inflow: parseFloat(r.inflow || r.Inflow || 0) || 0
+        inflow: parseNum(r.inflow || r.Inflow)
       })).filter(r => r.date && r.inflow);
       return res.json(out);
     }
