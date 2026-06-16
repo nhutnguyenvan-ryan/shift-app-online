@@ -2,97 +2,81 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const passport = require('passport');
-const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const cors = require('cors');
-const fs = require('fs');
+const { Strategy: GoogleStrategy } = require('passport-google-oauth20');
+const { Pool } = require('pg');
 const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const OWNER_EMAIL = process.env.OWNER_EMAIL;
 
-// ─── Data store (JSON file) ──────────────────────────────────────────────────
-const DATA_FILE = path.join(__dirname, 'data', 'store.json');
-const USERS_FILE = path.join(__dirname, 'data', 'users.json');
+// ── DATABASE ──────────────────────────────────────────────────────────────────
+// Dùng PostgreSQL trên Render (free tier), hoặc fallback in-memory nếu chưa có DB
+let db = null;
+let memStore = { config: null, editors: [], owner: process.env.OWNER_EMAIL || '' };
 
-function ensureDataDir() {
-  const dir = path.join(__dirname, 'data');
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir);
-  if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify({ configs: {}, sharedConfig: null }));
-  if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, JSON.stringify({ editors: [] }));
+if (process.env.DATABASE_URL) {
+  db = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+  // Init tables
+  db.query(`
+    CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT);
+  `).catch(console.error);
 }
-ensureDataDir();
 
-function readData() { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); }
-function writeData(d) { fs.writeFileSync(DATA_FILE, JSON.stringify(d, null, 2)); }
-function readUsers() { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); }
-function writeUsers(u) { fs.writeFileSync(USERS_FILE, JSON.stringify(u, null, 2)); }
+async function dbGet(key) {
+  if (!db) return memStore[key] ?? null;
+  const r = await db.query('SELECT value FROM kv_store WHERE key=$1', [key]);
+  return r.rows[0] ? JSON.parse(r.rows[0].value) : null;
+}
+async function dbSet(key, value) {
+  if (!db) { memStore[key] = value; return; }
+  await db.query(
+    'INSERT INTO kv_store(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
+    [key, JSON.stringify(value)]
+  );
+}
 
-// ─── Passport / Google OAuth ─────────────────────────────────────────────────
+// ── SESSION ───────────────────────────────────────────────────────────────────
+app.use(express.json({ limit: '10mb' }));
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'shiftiq-secret-change-me',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
+  }
+}));
+
+// ── PASSPORT / GOOGLE OAUTH ───────────────────────────────────────────────────
 passport.use(new GoogleStrategy({
-  clientID: process.env.GOOGLE_CLIENT_ID,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: `${process.env.BASE_URL}/auth/google/callback`
+  clientID: process.env.GOOGLE_CLIENT_ID || 'PLACEHOLDER',
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'PLACEHOLDER',
+  callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback'
 }, (accessToken, refreshToken, profile, done) => {
-  const email = profile.emails[0].value;
-  const user = {
+  done(null, {
     id: profile.id,
-    email,
+    email: profile.emails?.[0]?.value || '',
     name: profile.displayName,
-    photo: profile.photos[0]?.value
-  };
-  return done(null, user);
+    photo: profile.photos?.[0]?.value || ''
+  });
 }));
 
 passport.serializeUser((user, done) => done(null, user));
 passport.deserializeUser((user, done) => done(null, user));
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors());
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true }));
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'fallback-secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 } // 7 days
-}));
 app.use(passport.initialize());
 app.use(passport.session());
-app.use(express.static(path.join(__dirname, './')));
 
-// ─── Role helpers ─────────────────────────────────────────────────────────────
-function getRole(email) {
-  if (!email) return 'viewer';
-  if (email === OWNER_EMAIL) return 'owner';
-  const users = readUsers();
-  if (users.editors.includes(email)) return 'editor';
-  return 'viewer';
-}
-
-function requireAuth(req, res, next) {
-  if (req.isAuthenticated()) return next();
-  res.status(401).json({ error: 'Not authenticated' });
-}
-
-function requireEditor(req, res, next) {
-  if (!req.isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
-  const role = getRole(req.user.email);
-  if (role === 'owner' || role === 'editor') return next();
-  res.status(403).json({ error: 'Editor access required' });
-}
-
-function requireOwner(req, res, next) {
-  if (!req.isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
-  if (getRole(req.user.email) !== 'owner') return res.status(403).json({ error: 'Owner access required' });
-  next();
-}
-
-// ─── Auth routes ──────────────────────────────────────────────────────────────
-app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+// ── AUTH ROUTES ───────────────────────────────────────────────────────────────
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
 
 app.get('/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/?error=auth_failed' }),
+  passport.authenticate('google', { failureRedirect: '/' }),
   (req, res) => res.redirect('/')
 );
 
@@ -100,55 +84,120 @@ app.get('/auth/logout', (req, res) => {
   req.logout(() => res.redirect('/'));
 });
 
-app.get('/api/me', (req, res) => {
-  if (!req.isAuthenticated()) return res.json({ user: null, role: 'viewer' });
-  res.json({ user: req.user, role: getRole(req.user.email) });
+// ── ROLE HELPER ───────────────────────────────────────────────────────────────
+async function getRole(email) {
+  if (!email) return 'viewer';
+  const owner = await dbGet('owner') || process.env.OWNER_EMAIL || '';
+  if (email === owner) return 'owner';
+  const editors = await dbGet('editors') || [];
+  if (editors.includes(email)) return 'editor';
+  return 'viewer';
+}
+
+// ── API: ME ───────────────────────────────────────────────────────────────────
+app.get('/api/me', async (req, res) => {
+  const user = req.user || null;
+  const role = user ? await getRole(user.email) : 'viewer';
+  res.json({ user, role });
 });
 
-// ─── User management (owner only) ────────────────────────────────────────────
-app.get('/api/users', requireOwner, (req, res) => {
-  res.json(readUsers());
+// ── API: SHEET PROXY ──────────────────────────────────────────────────────────
+// Fetch Apps Script / Google Sheets URL phía server để tránh CORS
+// Client gọi: GET /api/fetch-sheet?url=...&type=inflow
+app.get('/api/fetch-sheet', async (req, res) => {
+  // Cho phép viewer fetch (chỉ đọc data)
+  const targetUrl = req.query.url;
+  const type = req.query.type || 'inflow';
+  if (!targetUrl) return res.status(400).json({ error: 'Missing url param' });
+
+  // Chỉ cho phép fetch từ Google domains
+  const allowed = /^https:\/\/(script\.google\.com|docs\.google\.com|sheets\.googleapis\.com)/;
+  if (!allowed.test(targetUrl)) {
+    return res.status(403).json({ error: 'URL không được phép — chỉ hỗ trợ Google domains' });
+  }
+
+  try {
+    const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+    const upstream = await fetch(targetUrl + (targetUrl.includes('?') ? '&' : '?') + 'type=' + type, {
+      headers: {
+        'Accept': 'application/json, text/csv, text/plain, */*',
+        'User-Agent': 'ShiftIQ-Server/1.0'
+      },
+      redirect: 'follow'
+    });
+
+    const contentType = upstream.headers.get('content-type') || '';
+    const text = await upstream.text();
+
+    if (!upstream.ok) {
+      return res.status(502).json({ error: `Upstream HTTP ${upstream.status}`, detail: text.slice(0, 200) });
+    }
+
+    // Trả về raw text + content-type để client tự parse
+    res.setHeader('Content-Type', contentType || 'text/plain');
+    res.setHeader('X-Upstream-Status', upstream.status);
+    res.send(text);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
 });
 
-app.post('/api/users/editors', requireOwner, (req, res) => {
+// ── API: CONFIG ───────────────────────────────────────────────────────────────
+app.get('/api/config', async (req, res) => {
+  const config = await dbGet('config');
+  res.json({ config });
+});
+
+app.post('/api/config', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const role = await getRole(req.user.email);
+  if (role === 'viewer') return res.status(403).json({ error: 'Forbidden' });
+  await dbSet('config', req.body);
+  res.json({ ok: true });
+});
+
+// ── API: USERS ────────────────────────────────────────────────────────────────
+app.get('/api/users', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const role = await getRole(req.user.email);
+  if (role !== 'owner') return res.status(403).json({ error: 'Forbidden' });
+  const editors = await dbGet('editors') || [];
+  res.json({ editors });
+});
+
+app.post('/api/users/editors', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const role = await getRole(req.user.email);
+  if (role !== 'owner') return res.status(403).json({ error: 'Forbidden' });
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
-  const users = readUsers();
-  if (!users.editors.includes(email)) users.editors.push(email);
-  writeUsers(users);
-  res.json({ success: true, editors: users.editors });
+  const editors = await dbGet('editors') || [];
+  if (!editors.includes(email)) { editors.push(email); await dbSet('editors', editors); }
+  res.json({ ok: true });
 });
 
-app.delete('/api/users/editors/:email', requireOwner, (req, res) => {
+app.delete('/api/users/editors/:email', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const role = await getRole(req.user.email);
+  if (role !== 'owner') return res.status(403).json({ error: 'Forbidden' });
   const email = decodeURIComponent(req.params.email);
-  const users = readUsers();
-  users.editors = users.editors.filter(e => e !== email);
-  writeUsers(users);
-  res.json({ success: true, editors: users.editors });
+  const editors = (await dbGet('editors') || []).filter(e => e !== email);
+  await dbSet('editors', editors);
+  res.json({ ok: true });
 });
 
-// ─── Config save/load ─────────────────────────────────────────────────────────
-// Save current config (editor/owner only)
-app.post('/api/config', requireEditor, (req, res) => {
-  const data = readData();
-  data.sharedConfig = { ...req.body, savedBy: req.user.email, savedAt: new Date().toISOString() };
-  writeData(data);
-  res.json({ success: true });
-});
+// ── STATIC FILES ──────────────────────────────────────────────────────────────
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Load shared config (all roles including viewer)
-app.get('/api/config', (req, res) => {
-  const data = readData();
-  res.json({ config: data.sharedConfig, role: req.isAuthenticated() ? getRole(req.user.email) : 'viewer' });
-});
-
-// ─── Serve app ────────────────────────────────────────────────────────────────
+// SPA fallback
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// ── START ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`\n🚀 Shift Scheduling App running at http://localhost:${PORT}`);
-  console.log(`   Owner: ${OWNER_EMAIL}`);
-  console.log(`   Google OAuth callback: ${process.env.BASE_URL}/auth/google/callback\n`);
+  console.log(`ShiftIQ running on port ${PORT}`);
+  if (!process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID === 'PLACEHOLDER') {
+    console.warn('⚠️  GOOGLE_CLIENT_ID chưa được set — Google OAuth sẽ không hoạt động');
+  }
 });

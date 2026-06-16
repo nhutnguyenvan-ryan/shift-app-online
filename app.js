@@ -273,9 +273,12 @@ function sheetsToCSV(url, sheetName){
   return`https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
 }
 
-// Detect Apps Script Web App URL (https://script.google.com/macros/s/.../exec)
+// Detect Apps Script Web App URL
+// Hỗ trợ cả 2 dạng:
+//   Public:     https://script.google.com/macros/s/.../exec
+//   Workspace:  https://script.google.com/a/macros/DOMAIN.com/s/.../exec
 function isAppsScriptURL(url){
-  return /script\.google(usercontent)?\.com\/macros\/s\/.+\/exec/.test(url.trim());
+  return /script\.google\.com\/(a\/macros\/[^/]+\/|macros\/)s\/.+\/exec/.test(url.trim());
 }
 
 async function fetchSheetData(type){
@@ -285,19 +288,27 @@ async function fetchSheetData(type){
   setStatus(type,'⏳ Đang tải dữ liệu…','');
   try{
     if(isAppsScriptURL(url)){
-      // ── Apps Script Web App → trả về JSON ──
-      const res=await fetch(url+(url.includes('?')?'&':'?')+'type='+type);
-      if(!res.ok)throw new Error('HTTP '+res.status);
-      const json=await res.json();
-      if(json.error)throw new Error(json.error);
-      if(type==='inflow')parseInflowJSON(json);
-      else parseEnqueueJSON(json);
+      // ── Apps Script Web App → fetch qua server proxy để tránh CORS ──
+      const proxyUrl=`/api/fetch-sheet?type=${type}&url=${encodeURIComponent(url)}`;
+      const res=await fetch(proxyUrl);
+      if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||`HTTP ${res.status}`);}
+      const contentType=res.headers.get('content-type')||'';
+      if(contentType.includes('json')){
+        const json=await res.json();
+        if(json.error)throw new Error(json.error);
+        if(type==='inflow')parseInflowJSON(Array.isArray(json)?json:[json]);
+        else parseEnqueueJSON(Array.isArray(json)?json:[json]);
+      }else{
+        const text=await res.text();
+        if(text.includes('<html'))throw new Error('Apps Script trả về trang login — kiểm tra lại cài đặt Deploy (Execute as: Me, Access: Anyone)');
+        parseCSV(text,type);
+      }
     }else{
       // ── Public CSV export ──
       const csvUrl=sheetsToCSV(url);
       if(!csvUrl)throw new Error('URL không hợp lệ — cần link Google Sheets hoặc Apps Script Web App');
-      const res=await fetch(csvUrl);
-      if(!res.ok)throw new Error('HTTP '+res.status);
+      const res=await fetch(`/api/fetch-sheet?type=${type}&url=${encodeURIComponent(csvUrl)}`);
+      if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||`HTTP ${res.status}`);}
       const text=await res.text();
       if(text.includes('<html'))throw new Error('Sheet chưa được chia sẻ công khai');
       parseCSV(text,type);
@@ -305,7 +316,7 @@ async function fetchSheetData(type){
     if(type==='inflow')window._sheetUrlInflow=url;
     else window._sheetUrlEnqueue=url;
   }catch(err){
-    setStatus(type,`❌ Lỗi: ${err.message}`,'err');
+    setStatus(type,`❌ ${err.message}`,'err');
   }
 }
 
