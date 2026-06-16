@@ -1,4 +1,5 @@
 require('dotenv').config();
+console.log('ENV OWNER_EMAIL:', JSON.stringify(process.env.OWNER_EMAIL));
 const express = require('express');
 const session = require('express-session');
 const passport = require('passport');
@@ -88,7 +89,7 @@ app.get('/auth/logout', (req, res) => {
 async function getRole(email) {
   if (!email) return 'viewer';
   const owner = await dbGet('owner') || process.env.OWNER_EMAIL || '';
-  console.log('DEBUG getRole:', email, '| owner:', owner); // ← thêm dòng này
+  console.log('DEBUG getRole | email:', email, '| owner:', owner);
   if (email === owner) return 'owner';
   const editors = await dbGet('editors') || [];
   if (editors.includes(email)) return 'editor';
