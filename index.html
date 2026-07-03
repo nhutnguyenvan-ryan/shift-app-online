@@ -108,6 +108,12 @@
     <button class="tab" onclick="showTab('shift')" data-tab="shift">
       <span class="tab-icon">⊞</span> Shift Allocation
     </button>
+    <button class="tab" onclick="showTab('trend')" data-tab="trend">
+      <span class="tab-icon">↗</span> Trend Report
+    </button>
+    <button class="tab" onclick="showTab('workmode')" data-tab="workmode">
+      <span class="tab-icon">⊙</span> Work Mode
+    </button>
   </div>
 
   <!-- ── DATA TAB ── -->
@@ -191,6 +197,13 @@
         <table class="data-table pivot-week" id="weekPivot"></table>
       </div>
     </div>
+    <div class="ai-insight-card">
+      <div class="ai-insight-header">
+        <span class="ai-insight-title">✦ AI Insight — Weekly Overview</span>
+        <button class="btn-ai" id="ai-week-btn" onclick="generateAIInsight('Weekly Overview: HC Order, Coverage, Inflow theo ngày','ai-week')">✦ AI Insight</button>
+      </div>
+      <div class="ai-insight-body" id="ai-week"><span class="ai-placeholder">Bấm "AI Insight" để phân tích toàn bộ tuần — nhận diện ngày rủi ro, pattern bất thường, đề xuất tối ưu.</span></div>
+    </div>
   </div>
 
   <!-- ── DAY TAB ── -->
@@ -217,6 +230,15 @@
     </div>
   </div>
 
+    <div class="ai-insight-card">
+      <div class="ai-insight-header">
+        <span class="ai-insight-title">✦ AI Insight — Daily Detail</span>
+        <button class="btn-ai" id="ai-day-btn" onclick="generateAIInsight('Daily Detail: phân tích theo giờ cho ngày được chọn','ai-day')">✦ AI Insight</button>
+      </div>
+      <div class="ai-insight-body" id="ai-day"><span class="ai-placeholder">Bấm "AI Insight" để phân tích chi tiết giờ cao điểm, giờ thiếu nhân sự, và cơ hội tối ưu trong ngày.</span></div>
+    </div>
+  </div>
+
   <!-- ── SHIFT TAB ── -->
   <div id="sec-shift" class="section">
     <div class="day-controls">
@@ -233,14 +255,76 @@
         <table class="data-table pivot-week" id="shiftPivot"></table>
       </div>
     </div>
-    <div class="chart-card">
-      <div class="chart-title">Coverage vs Optimal HC by Hour</div>
-      <div class="chart-legend">
-        <span class="leg"><span class="leg-sq" style="background:rgba(37,99,235,.4)"></span>Coverage</span>
-        <span class="leg"><span class="leg-sq" style="background:rgba(217,119,6,.3);border:1px solid #d97706"></span>Carry-in</span>
-        <span class="leg"><span class="leg-sq" style="background:#dc2626"></span>HC Optimal</span>
+    <div class="table-card">
+      <div class="table-card-title">🌡 Mật độ nhân sự theo giờ & ngày (Heatmap)</div>
+      <div id="staffHeatmap" style="padding:16px"></div>
+    </div>
+    <div class="ai-insight-card">
+      <div class="ai-insight-header">
+        <span class="ai-insight-title">✦ AI Insight — Shift Allocation</span>
+        <button class="btn-ai" id="ai-shift-btn" onclick="generateAIInsight('Shift Allocation: phân bổ ca FT và PT, mật độ nhân sự theo giờ','ai-shift')">✦ AI Insight</button>
       </div>
-      <div class="chart-wrap" style="height:280px"><canvas id="shiftChart"></canvas></div>
+      <div class="ai-insight-body" id="ai-shift"><span class="ai-placeholder">Bấm "AI Insight" để phân tích hiệu quả phân bổ ca, nhận diện giờ coverage gap, và đề xuất điều chỉnh shift mix.</span></div>
+    </div>
+  </div>
+  <!-- ── TREND REPORT TAB ── -->
+  <div id="sec-trend" class="section">
+    <div class="ai-insight-card" style="margin-bottom:1.25rem">
+      <div class="ai-insight-header">
+        <span class="ai-insight-title">✦ AI Insight — Trend Report</span>
+        <button class="btn-ai" id="ai-trend-btn" onclick="generateAIInsight('Trend Report: xu hướng Inflow, HC Order, Task Coverage theo thời gian','ai-trend')">✦ AI Insight</button>
+      </div>
+      <div class="ai-insight-body" id="ai-trend"><span class="ai-placeholder">Bấm "AI Insight" để phân tích xu hướng, dự báo ngắn hạn, và phát hiện điểm bất thường trong data.</span></div>
+    </div>
+    <div class="trend-grid">
+      <div class="chart-card">
+        <div class="chart-title">📈 Daily Inflow Trend</div>
+        <div class="chart-wrap" style="height:220px"><canvas id="trendInflow"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">👥 HC Order Trend <span class="chart-formula">FT + PT÷2</span></div>
+        <div class="chart-wrap" style="height:220px"><canvas id="trendHC"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">✅ %Task Coverage Trend</div>
+        <div class="chart-wrap" style="height:220px"><canvas id="trendCov"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── WORK MODE TAB ── -->
+  <div id="sec-workmode" class="section">
+    <div class="ai-insight-card" style="margin-bottom:1.25rem">
+      <div class="ai-insight-header">
+        <span class="ai-insight-title">✦ AI Insight — Work Mode</span>
+        <button class="btn-ai" id="ai-workmode-btn" onclick="generateAIInsight('Work Mode Report: phân bổ WFH vs On-Floor theo ngày và ca làm việc','ai-workmode')">✦ AI Insight</button>
+      </div>
+      <div class="ai-insight-body" id="ai-workmode"><span class="ai-placeholder">Bấm "AI Insight" để phân tích tỷ lệ WFH/On-Floor, rủi ro vận hành, và đề xuất cân bằng work mode.</span></div>
+    </div>
+    <div class="kpi-grid" id="workModeKPI" style="margin-bottom:1.25rem"></div>
+    <div class="chart-card">
+      <div class="chart-title">🏠 WFH vs On-Floor by Day</div>
+      <div class="chart-legend">
+        <span class="leg"><span class="leg-sq" style="background:#2563eb"></span>On-Floor</span>
+        <span class="leg"><span class="leg-sq" style="background:#7c3aed"></span>WFH</span>
+      </div>
+      <div class="chart-legend" style="margin-top:4px;font-size:11px;color:var(--text3)">
+        WFH logic: Ca kết thúc sau 19:00 HOẶC FT bắt đầu từ 13:00
+      </div>
+      <div class="chart-wrap" style="height:280px"><canvas id="workModeChart"></canvas></div>
+    </div>
+    <div class="table-card">
+      <div class="table-card-title">Chi tiết WFH vs On-Floor theo ngày</div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr>
+            <th>Thứ</th><th>Ngày</th><th>Event</th>
+            <th>On-Floor</th><th>WFH</th><th>Tổng HC</th>
+            <th>WFH%</th><th>Ca WFH</th>
+          </tr></thead>
+          <tbody id="workModeTbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </main>
