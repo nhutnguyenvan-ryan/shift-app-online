@@ -686,3 +686,84 @@ body {
   .tabs { overflow-x: auto; }
   .tab { padding: 10px 14px 12px; font-size: 12px }
 }
+
+/* ── TREND GRID ── */
+.trend-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin-bottom: 1rem }
+@media (max-width:1100px){ .trend-grid { grid-template-columns: 1fr } }
+
+/* ── HEATMAP ── */
+.heatmap-wrap { overflow: hidden }
+.heatmap-scroll { overflow-x: auto; margin-bottom: 10px }
+.heatmap-table { border-collapse: collapse; font-size: 11px; white-space: nowrap }
+.heatmap-table th {
+  background: var(--surface2); padding: 5px 8px;
+  border: 1px solid var(--border); font-weight: 700;
+  color: var(--text3); text-align: center; position: sticky; top: 0; z-index: 1;
+}
+.hm-dow { font-size: 10px; font-weight: 700; color: var(--text2) }
+.hm-date { font-size: 9px; color: var(--text3) }
+.hm-hour-label {
+  padding: 4px 10px; font-family: var(--mono); font-size: 10px;
+  color: var(--text3); background: var(--surface2);
+  border: 1px solid var(--border); position: sticky; left: 0; z-index: 1;
+  white-space: nowrap; text-align: right;
+}
+.hm-hour-label.hm-peak { color: var(--red); font-weight: 700 }
+.hm-cell {
+  width: 52px; height: 28px; text-align: center;
+  border: 1px solid rgba(0,0,0,.05);
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  transition: opacity .1s; cursor: default;
+}
+.hm-cell:hover { opacity: .75; outline: 2px solid var(--blue) }
+.hm-legend {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 10px; color: var(--text3); padding: 4px 0;
+}
+.hm-leg-bar {
+  flex: 1; max-width: 200px; height: 10px; border-radius: 5px;
+  background: linear-gradient(to right, #f8f9fc, #bfdbfe, #2563eb);
+  border: 1px solid var(--border);
+}
+.hm-leg-label { font-family: var(--mono); font-size: 10px }
+
+/* ── AI INSIGHT CARD ── */
+.ai-insight-card {
+  background: linear-gradient(135deg, #fafbff 0%, #f0f4ff 100%);
+  border: 1.5px solid var(--blue-md);
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(37,99,235,.08);
+}
+.ai-insight-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 16px; border-bottom: 1px solid var(--blue-md);
+  background: var(--blue-lt);
+}
+.ai-insight-title { font-size: 12px; font-weight: 700; color: var(--blue); letter-spacing: .02em }
+.btn-ai {
+  height: 30px; padding: 0 14px;
+  background: var(--blue); color: #fff;
+  border: none; border-radius: 6px;
+  font-size: 11px; font-weight: 700;
+  cursor: pointer; font-family: var(--sans);
+  transition: background .15s;
+}
+.btn-ai:hover { background: #1d4ed8 }
+.btn-ai:disabled { opacity: .6; cursor: not-allowed }
+.ai-insight-body {
+  padding: 14px 18px; min-height: 56px;
+  font-size: 13px; color: var(--text2); line-height: 1.7;
+}
+.ai-placeholder { color: var(--text4); font-style: italic; font-size: 12px }
+.ai-loading { color: var(--blue); font-size: 12px; animation: ai-pulse 1.2s infinite }
+@keyframes ai-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.ai-content { color: var(--text); white-space: pre-wrap; font-size: 13px; line-height: 1.75 }
+.ai-error { color: var(--red); font-size: 12px }
+
+/* ── BADGE PURPLE ── */
+.badge-purple { background: #f5f3ff; color: #7c3aed; border: 1.5px solid #ddd6fe }
+
+/* ── SHIFT PIVOT val (no bold) ── */
+.pivot-week .pw-shift-val { color: var(--text2); font-weight: 400 }
