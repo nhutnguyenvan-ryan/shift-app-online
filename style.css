@@ -706,6 +706,11 @@ body {
   background: var(--amber-lt); border: 1px solid #fde68a;
   border-radius: var(--radius);
 }
+.ai-insight-fallback {
+  padding: 10px 16px; font-size: 12px; color: var(--text3);
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); font-style: italic;
+}
 
 /* ── HEATMAP ── */
 .heatmap-scroll { overflow-x: auto }

@@ -771,10 +771,10 @@ function renderShiftHeatmap(){
 }
 
 // ── WORK MODE LOGIC ───────────────────────────────────────────────────────────
-// WFH: Ca FT bắt đầu từ 13h trở đi, HOẶC ca kết thúc sau 19h (PT/FT)
+// WFH: Ca kết thúc sau 19h  HOẶC  Ca Fulltime bắt đầu > 12h (tức >= 13h)
 function getShiftEndHour(s){
   if(s.brk!==null){
-    // FT: start + 9 slots (8 làm + 1 break)
+    // FT: start + 9 slots (8 giờ làm + 1 giờ nghỉ)
     const endAbs=s.start+9; return endAbs%24;
   } else {
     // PT: start + 4
@@ -782,10 +782,12 @@ function getShiftEndHour(s){
   }
 }
 function isWFH(s){
-  const isFT=s.cost===1;
-  const endH=getShiftEndHour(s);
-  const endAfter19 = endH>0&&endH<=8 || endH>19; // vắt qua đêm hoặc >19
-  if(isFT && s.start%24>=13) return true;
+  const isFT = s.cost===1;
+  const endH = getShiftEndHour(s);
+  // Ca kết thúc sau 19h: endH là 20,21,...,23, hoặc vắt sang đêm (0..7)
+  const endAfter19 = (endH>=20 && endH<=23) || (endH>=0 && endH<=8);
+  // Ca FT bắt đầu > 12h (bắt đầu từ 13h trở đi)
+  if(isFT && (s.start%24) > 12) return true;
   if(endAfter19) return true;
   return false;
 }
@@ -806,6 +808,7 @@ function buildWorkModeData(){
 let workChart=null;
 function renderWorkMode(){
   if(!weekData.length)return;
+  if(window.ChartDataLabels) Chart.register(ChartDataLabels);
   const data=buildWorkModeData();
 
   // KPI
@@ -830,8 +833,16 @@ function renderWorkMode(){
       ]
     },
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{labels:{font:{size:12},color:'#3d4766',boxWidth:14}},
-        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y} HC`}}},
+      plugins:{
+        legend:{labels:{font:{size:12},color:'#3d4766',boxWidth:14}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y} HC`}},
+        datalabels:{
+          display:(ctx)=>ctx.parsed.y>0,
+          color:'#fff',font:{size:9,family:'Roboto Mono',weight:'700'},
+          anchor:'center',align:'center',
+          formatter:v=>v>0?v.toFixed(1):''
+        }
+      },
       scales:{
         x:{stacked:true,ticks:{color:'#7c84a3',font:{size:11}},grid:{display:false}},
         y:{stacked:true,beginAtZero:true,ticks:{color:'#7c84a3'},grid:{color:'rgba(0,0,0,.05)'}}
@@ -864,6 +875,8 @@ function renderWorkMode(){
 let trendChart1=null,trendChart2=null,trendChart3=null;
 function renderTrend(){
   if(!weekData.length)return;
+  // Đăng ký plugin datalabels chỉ khi cần
+  if(window.ChartDataLabels) Chart.register(ChartDataLabels);
   const labels=weekData.map(w=>`${w.dowLabel} ${w.dateStr.slice(0,5)}`);
   const inflows=weekData.map(w=>Math.round(w.inflow));
   const hcs=weekData.map(w=>+getEff(w.d).weightedHC.toFixed(1));
@@ -882,7 +895,9 @@ function renderTrend(){
   trendChart1=new Chart(document.getElementById('trendChart1'),{
     type:'line',
     data:{labels,datasets:[{label:'Inflow (tasks)',data:inflows,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.08)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#2563eb'}]},
-    options:commonOpts('Inflow')
+    options:{...commonOpts('Inflow'),plugins:{...commonOpts('Inflow').plugins,
+      datalabels:{display:true,align:'top',anchor:'end',color:'#2563eb',font:{size:9,family:'Roboto Mono',weight:'500'},
+        formatter:v=>v>=1000?(v/1000).toFixed(1)+'k':v}}}
   });
 
   if(trendChart2)trendChart2.destroy();
@@ -891,17 +906,23 @@ function renderTrend(){
     data:{labels,datasets:[
       {label:'HC Order (FT+PT/2)',data:hcs,borderColor:'#7c3aed',backgroundColor:'rgba(124,58,237,.08)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#7c3aed'}
     ]},
-    options:commonOpts('HC Order')
+    options:{...commonOpts('HC Order'),plugins:{...commonOpts('HC Order').plugins,
+      datalabels:{display:true,align:'top',anchor:'end',color:'#7c3aed',font:{size:9,family:'Roboto Mono',weight:'500'},
+        formatter:v=>v.toFixed(1)}}}
   });
 
   if(trendChart3)trendChart3.destroy();
+  const cov3opts={...commonOpts('%'),scales:{...commonOpts('%').scales,y:{...commonOpts('%').scales.y,min:80,max:100}}};
   trendChart3=new Chart(document.getElementById('trendChart3'),{
     type:'line',
     data:{labels,datasets:[
       {label:'%Task Coverage',data:covs,borderColor:'#059669',backgroundColor:'rgba(5,150,105,.08)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#059669'},
       {label:'Target',data:targets,borderColor:'#d97706',borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false}
     ]},
-    options:{...commonOpts('%'),scales:{...commonOpts('%').scales,y:{...commonOpts('%').scales.y,min:80,max:100}}}
+    options:{...cov3opts,plugins:{...cov3opts.plugins,
+      datalabels:{display:(ctx)=>ctx.datasetIndex===0,align:'top',anchor:'end',
+        color:'#059669',font:{size:9,family:'Roboto Mono',weight:'500'},
+        formatter:v=>v.toFixed(1)+'%'}}}
   });
 
   renderAIInsight('trend', buildTrendContext());
@@ -958,6 +979,11 @@ async function renderAIInsight(tabId, context){
     const data=await resp.json();
     if(!resp.ok) throw new Error(data.error||`HTTP ${resp.status}`);
     const text=data.text||'Không nhận được phản hồi từ AI.';
+    // Nếu là fallback (chưa cấu hình API key) thì hiển thị dạng thông báo nhẹ
+    if(data.fallback){
+      container.innerHTML=`<div class="ai-insight-fallback"><span style="opacity:.5">✦</span> ${text}</div>`;
+      return;
+    }
     container.innerHTML=`<div class="ai-insight-result">
       <div class="ai-insight-header"><span class="ai-icon">✦</span> AI Insight</div>
       <div class="ai-insight-body">${text.replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')}</div>
