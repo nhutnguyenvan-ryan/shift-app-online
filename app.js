@@ -494,7 +494,7 @@ function calcWeek() {
     weekData.push({d:idx,dateStr:ds,dow,event,inflow,hourInflows,enq,opt,carryIn:[...prevCarryOut],dowLabel:DOW_LABELS[dow],eventTarget});
     prevCarryOut=opt.carryOut; manualShift[idx]=null;
   });
-  populateSelects(); renderWeekGrid(); renderDayDetail(); renderShiftBreakdown();
+  populateSelects(); renderWeekGrid(); renderDayDetail(); renderShiftBreakdown(); renderTrend(); renderWorkMode();
 }
 
 function populateSelects(){
@@ -576,6 +576,9 @@ function renderWeekGrid(){
     <div class="kpi-card"><div class="kpi-label">Avg Abandon</div><div class="kpi-value ${avgAb<1-TARGET?'kv-good':'kv-bad'}">${(avgAb*100).toFixed(1)}%</div><div class="kpi-sub">target &lt; ${((1-TARGET)*100).toFixed(0)}%</div></div>`;
 
   if(weekChart)weekChart.destroy();weekChart=null;
+
+  // AI Insight cho Weekly Overview
+  renderAIInsight('week', buildWeekContext());
 }
 
 function selectDay(d){
@@ -625,6 +628,9 @@ function renderDayDetail(){
       <td>${kpi}</td>
     </tr>`;
   }).join('');
+
+  // AI Insight cho Daily Detail
+  renderAIInsight('day', buildDayContext());
 }
 
 // ── RENDER SHIFT PIVOT ────────────────────────────────────────────────────────
@@ -675,49 +681,290 @@ function renderShiftBreakdown(){
     <tr class="pw-cov"><td class="pw-label-col">%Task Coverage (KF)</td>${weekData.map(w=>{const e2=getEff(w.d);const ok=e2.coverage_pct>=w.eventTarget;return`<td><span style="color:${ok?'var(--success)':'var(--danger)'}">${(e2.coverage_pct*100).toFixed(1)}%</span></td>`;}).join('')}</tr>
     <tr class="pw-section-hdr"><td class="pw-label-col">Breakdown by Shift</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
 
-  // FT section
+  // FT section — tiêu đề "F (Fulltime)", số lượng không in đậm
   const activeFT=SHIFTS_FT.filter(s=>activeShifts.has(s.name));
   if(activeFT.length){
-    tbody+=`<tr class="pw-shift-group"><td class="pw-label-col pw-shift-type-label">S0*</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
+    tbody+=`<tr class="pw-shift-group"><td class="pw-label-col pw-shift-type-label">F (Fulltime)</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
     activeFT.forEach(s=>{
       const cells=weekData.map(w=>{
         const n=getEff(w.d).shiftCounts[s.name]||0;
-        return`<td class="${n>0?'pw-shift-active':''}">${n>0?n.toFixed(1):''}</td>`;
+        return`<td style="font-weight:400">${n>0?n.toFixed(1):''}</td>`;
       }).join('');
-      tbody+=`<tr class="pw-shift"><td class="pw-label-col pw-shift-name">${s.name}</td>${cells}</tr>`;
+      tbody+=`<tr class="pw-shift"><td class="pw-label-col" style="font-family:var(--mono);font-size:11px;font-weight:400;color:var(--text2)">${s.name}</td>${cells}</tr>`;
     });
   }
 
-  // PT section
+  // PT section — số lượng không in đậm
   const activePT=SHIFTS_PT.filter(s=>activeShifts.has(s.name));
   if(activePT.length){
     tbody+=`<tr class="pw-shift-group"><td class="pw-label-col pw-shift-type-label">P (Parttime)</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
     activePT.forEach(s=>{
       const cells=weekData.map(w=>{
         const n=getEff(w.d).shiftCounts[s.name]||0;
-        return`<td class="${n>0?'pw-shift-active':''}">${n>0?n.toFixed(1):''}</td>`;
+        return`<td style="font-weight:400">${n>0?n.toFixed(1):''}</td>`;
       }).join('');
-      tbody+=`<tr class="pw-shift"><td class="pw-label-col pw-shift-name">${s.name}</td>${cells}</tr>`;
+      tbody+=`<tr class="pw-shift"><td class="pw-label-col" style="font-family:var(--mono);font-size:11px;font-weight:400;color:var(--text2)">${s.name}</td>${cells}</tr>`;
     });
   }
 
   tbody+=`</tbody>`;
   pivot.innerHTML=thead+tbody;
 
-  // Shift coverage chart for selected day
-  if(shiftChart)shiftChart.destroy();
-  shiftChart=new Chart(document.getElementById('shiftChart'),{
-    type:'bar',
-    data:{labels:Array.from({length:24},(_,i)=>i+':00'),datasets:[
-      {label:'Coverage',data:e.coverage,backgroundColor:'rgba(37,99,235,.25)',borderRadius:2,order:2},
-      {label:'Carry-in',data:wd.carryIn,backgroundColor:'rgba(217,119,6,.2)',borderRadius:2,order:3},
-      {label:'HC Optimal',data:e.coverage,type:'line',borderColor:'#dc2626',backgroundColor:'transparent',borderWidth:2,pointRadius:0,order:1}
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{labels:{font:{size:11},color:'#4a5068',boxWidth:12}}},
-      scales:{x:{ticks:{autoSkip:false,font:{size:9},color:'#4a5068'},grid:{color:'rgba(0,0,0,.06)'}},
-        y:{beginAtZero:true,ticks:{color:'#4a5068'},grid:{color:'rgba(0,0,0,.06)'}}}}
+  // ── HEATMAP: Mật độ nhân sự theo giờ × ngày ──────────────────────────────
+  renderShiftHeatmap();
+
+  // ── AI INSIGHT cho Shift Allocation ──────────────────────────────────────
+  renderAIInsight('shift', buildShiftContext());
+}
+
+// ── HEATMAP: Mật độ nhân sự theo giờ × ngày ──────────────────────────────────
+function renderShiftHeatmap(){
+  const wrap=document.getElementById('shiftHeatmapWrap');
+  if(!wrap||!weekData.length)return;
+
+  // Build matrix: rows=hours(0-23), cols=days
+  const matrix=Array.from({length:24},(_,h)=>weekData.map(w=>getEff(w.d).coverage[h]||0));
+  const maxVal=Math.max(...matrix.flat(),1);
+
+  function heatColor(v){
+    const pct=v/maxVal;
+    if(pct===0)return{bg:'#f1f3f8',text:'#a8afc8'};
+    if(pct<0.3)return{bg:`rgba(37,99,235,${0.1+pct*0.5})`,text:'#2563eb'};
+    if(pct<0.6)return{bg:`rgba(37,99,235,${0.35+pct*0.4})`,text:'#fff'};
+    return{bg:`rgba(30,64,175,${0.6+pct*0.35})`,text:'#fff'};
+  }
+
+  const colW=Math.max(52, Math.floor((wrap.offsetWidth-130)/Math.max(weekData.length,1)));
+
+  let html=`<div class="heatmap-scroll"><table class="heatmap-table">
+    <thead><tr><th class="hm-label-col">Giờ</th>
+    ${weekData.map(w=>`<th style="min-width:${colW}px"><div style="font-size:10px;color:#7c84a3;font-weight:700">${w.dowLabel}</div><div style="font-size:9px;color:#a8afc8">${w.dateStr.slice(0,5)}</div></th>`).join('')}
+    </tr></thead><tbody>`;
+
+  for(let h=0;h<24;h++){
+    html+=`<tr><td class="hm-label-col">${String(h).padStart(2,'0')}:00</td>`;
+    weekData.forEach((_,di)=>{
+      const v=matrix[h][di];
+      const {bg,text}=heatColor(v);
+      const isTop=v===maxVal&&v>0;
+      html+=`<td style="background:${bg};color:${text};text-align:center;font-size:11px;font-family:var(--mono);padding:5px 4px;border:1px solid rgba(255,255,255,.4);position:relative">
+        ${v>0?v.toFixed(0):''}${isTop?'<span style="position:absolute;top:1px;right:2px;font-size:7px">★</span>':''}
+      </td>`;
+    });
+    html+=`</tr>`;
+  }
+  html+=`</tbody></table></div>`;
+
+  // Chú thích
+  html+=`<div class="heatmap-legend">
+    <span style="font-size:11px;color:#7c84a3;margin-right:12px">Mật độ:</span>
+    ${['Thấp','Trung bình','Cao','Cao điểm'].map((lb,i)=>{
+      const pcts=[0.1,0.35,0.65,1];
+      const bg=i===0?'#f1f3f8':`rgba(37,99,235,${pcts[i]})`;
+      return`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:11px;color:#7c84a3">
+        <span style="width:14px;height:14px;background:${bg};border-radius:3px;display:inline-block"></span>${lb}</span>`;
+    }).join('')}
+    <span style="font-size:10px;color:#a8afc8;margin-left:8px">★ = giờ cao điểm nhất</span>
+  </div>`;
+
+  wrap.innerHTML=html;
+}
+
+// ── WORK MODE LOGIC ───────────────────────────────────────────────────────────
+// WFH: Ca FT bắt đầu từ 13h trở đi, HOẶC ca kết thúc sau 19h (PT/FT)
+function getShiftEndHour(s){
+  if(s.brk!==null){
+    // FT: start + 9 slots (8 làm + 1 break)
+    const endAbs=s.start+9; return endAbs%24;
+  } else {
+    // PT: start + 4
+    const endAbs=s.start+4; return endAbs%24;
+  }
+}
+function isWFH(s){
+  const isFT=s.cost===1;
+  const endH=getShiftEndHour(s);
+  const endAfter19 = endH>0&&endH<=8 || endH>19; // vắt qua đêm hoặc >19
+  if(isFT && s.start%24>=13) return true;
+  if(endAfter19) return true;
+  return false;
+}
+
+function buildWorkModeData(){
+  return weekData.map(w=>{
+    const sc=getEff(w.d).shiftCounts;
+    let wfh=0,floor=0;
+    ALL_SHIFTS.forEach(s=>{
+      const n=sc[s.name]||0; if(!n)return;
+      if(isWFH(s)) wfh+=n; else floor+=n;
+    });
+    return{dateStr:w.dateStr,dowLabel:w.dowLabel,event:w.event,wfh:+(wfh.toFixed(1)),floor:+(floor.toFixed(1)),total:+(wfh+floor).toFixed(1)};
   });
+}
+
+// ── RENDER WORK MODE ──────────────────────────────────────────────────────────
+let workChart=null;
+function renderWorkMode(){
+  if(!weekData.length)return;
+  const data=buildWorkModeData();
+
+  // KPI
+  const totalWfh=data.reduce((s,d)=>s+d.wfh,0);
+  const totalFloor=data.reduce((s,d)=>s+d.floor,0);
+  const pctWfh=totalWfh/(totalWfh+totalFloor||1)*100;
+  document.getElementById('workModeKPI').innerHTML=`
+    <div class="kpi-card"><div class="kpi-label">Tổng WFH (HC)</div><div class="kpi-value" style="color:#7c3aed">${totalWfh.toFixed(1)}</div><div class="kpi-sub">Ca kết thúc sau 19h hoặc FT từ 13h</div></div>
+    <div class="kpi-card"><div class="kpi-label">Tổng On-Floor (HC)</div><div class="kpi-value" style="color:#059669">${totalFloor.toFixed(1)}</div><div class="kpi-sub">Còn lại</div></div>
+    <div class="kpi-card"><div class="kpi-label">Tỉ lệ WFH</div><div class="kpi-value" style="color:#2563eb">${pctWfh.toFixed(1)}%</div><div class="kpi-sub">Trên tổng HC cả tuần</div></div>
+    <div class="kpi-card"><div class="kpi-label">Số ngày có WFH</div><div class="kpi-value kv-neutral">${data.filter(d=>d.wfh>0).length}</div><div class="kpi-sub">/ ${data.length} ngày</div></div>`;
+
+  // Chart
+  if(workChart)workChart.destroy();
+  workChart=new Chart(document.getElementById('workModeChart'),{
+    type:'bar',
+    data:{
+      labels:data.map(d=>`${d.dowLabel}\n${d.dateStr.slice(0,5)}`),
+      datasets:[
+        {label:'WFH',data:data.map(d=>d.wfh),backgroundColor:'rgba(124,58,237,.7)',borderRadius:4,stack:'s'},
+        {label:'On-Floor',data:data.map(d=>d.floor),backgroundColor:'rgba(5,150,105,.65)',borderRadius:4,stack:'s'}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{font:{size:12},color:'#3d4766',boxWidth:14}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y} HC`}}},
+      scales:{
+        x:{stacked:true,ticks:{color:'#7c84a3',font:{size:11}},grid:{display:false}},
+        y:{stacked:true,beginAtZero:true,ticks:{color:'#7c84a3'},grid:{color:'rgba(0,0,0,.05)'}}
+      }}
+  });
+
+  // Table chi tiết
+  document.getElementById('workModeTable').innerHTML=`
+    <table class="data-table"><thead><tr>
+      <th>Ngày</th><th>Thứ</th><th>Sự kiện</th>
+      <th>WFH (HC)</th><th>On-Floor (HC)</th><th>Tổng</th><th>% WFH</th>
+    </tr></thead><tbody>
+    ${data.map(d=>{
+      const pct=d.total>0?(d.wfh/d.total*100).toFixed(1):'0.0';
+      return`<tr>
+        <td>${d.dateStr}</td><td>${d.dowLabel}</td>
+        <td><span class="badge badge-gray">${d.event}</span></td>
+        <td style="color:#7c3aed;font-weight:600">${d.wfh}</td>
+        <td style="color:#059669;font-weight:600">${d.floor}</td>
+        <td>${d.total}</td>
+        <td><span class="badge ${parseFloat(pct)>50?'badge-blue':'badge-green'}">${pct}%</span></td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>`;
+
+  renderAIInsight('workmode', buildWorkModeContext(data));
+}
+
+// ── RENDER TREND REPORT ───────────────────────────────────────────────────────
+let trendChart1=null,trendChart2=null,trendChart3=null;
+function renderTrend(){
+  if(!weekData.length)return;
+  const labels=weekData.map(w=>`${w.dowLabel} ${w.dateStr.slice(0,5)}`);
+  const inflows=weekData.map(w=>Math.round(w.inflow));
+  const hcs=weekData.map(w=>+getEff(w.d).weightedHC.toFixed(1));
+  const covs=weekData.map(w=>+(getEff(w.d).coverage_pct*100).toFixed(1));
+  const targets=weekData.map(w=>+(w.eventTarget*100).toFixed(1));
+
+  const commonOpts=(yLabel)=>({responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{labels:{font:{size:11},color:'#3d4766',boxWidth:12}}},
+    scales:{
+      x:{ticks:{color:'#7c84a3',font:{size:10},maxRotation:30},grid:{display:false}},
+      y:{beginAtZero:false,title:{display:true,text:yLabel,color:'#7c84a3',font:{size:10}},
+        ticks:{color:'#7c84a3'},grid:{color:'rgba(0,0,0,.05)'}}
+    }});
+
+  if(trendChart1)trendChart1.destroy();
+  trendChart1=new Chart(document.getElementById('trendChart1'),{
+    type:'line',
+    data:{labels,datasets:[{label:'Inflow (tasks)',data:inflows,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.08)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#2563eb'}]},
+    options:commonOpts('Inflow')
+  });
+
+  if(trendChart2)trendChart2.destroy();
+  trendChart2=new Chart(document.getElementById('trendChart2'),{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'HC Order (FT+PT/2)',data:hcs,borderColor:'#7c3aed',backgroundColor:'rgba(124,58,237,.08)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#7c3aed'}
+    ]},
+    options:commonOpts('HC Order')
+  });
+
+  if(trendChart3)trendChart3.destroy();
+  trendChart3=new Chart(document.getElementById('trendChart3'),{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'%Task Coverage',data:covs,borderColor:'#059669',backgroundColor:'rgba(5,150,105,.08)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#059669'},
+      {label:'Target',data:targets,borderColor:'#d97706',borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false}
+    ]},
+    options:{...commonOpts('%'),scales:{...commonOpts('%').scales,y:{...commonOpts('%').scales.y,min:80,max:100}}}
+  });
+
+  renderAIInsight('trend', buildTrendContext());
+}
+
+// ── CONTEXT BUILDERS cho AI Insight ──────────────────────────────────────────
+function buildWeekContext(){
+  if(!weekData.length)return'Chưa có dữ liệu.';
+  return`Báo cáo Weekly Overview: ${weekData.length} ngày. `+
+    weekData.map(w=>{const e=getEff(w.d);return`[${w.dateStr} ${w.event}] Inflow:${Math.round(w.inflow).toLocaleString()} HC:${e.weightedHC.toFixed(1)} Cov:${(e.coverage_pct*100).toFixed(1)}% Target:${(w.eventTarget*100).toFixed(1)}%`;}).join(' | ');
+}
+function buildDayContext(){
+  const d=parseInt(document.getElementById('daySelect').value);
+  if(!weekData[d])return'Chưa có dữ liệu.';
+  const wd=weekData[d],e=getEff(d);
+  return`Ngày ${wd.dateStr} (${wd.event}): Inflow ${Math.round(wd.inflow).toLocaleString()}, HC ${e.weightedHC.toFixed(1)} (FT ${e.ft} PT ${e.pt}), Coverage ${(e.coverage_pct*100).toFixed(1)}%, Target ${(wd.eventTarget*100).toFixed(1)}%. Hourly coverage: ${e.coverage.map((v,h)=>`${h}h:${v}`).join(',')}`;
+}
+function buildShiftContext(){
+  if(!weekData.length)return'Chưa có dữ liệu.';
+  const activeShifts=new Set();
+  weekData.forEach(w=>{const sc=getEff(w.d).shiftCounts;ALL_SHIFTS.forEach(s=>{if((sc[s.name]||0)>0)activeShifts.add(s.name);});});
+  const summary=weekData.map(w=>{const sc=getEff(w.d).shiftCounts;const shifts=[...activeShifts].filter(n=>sc[n]>0).map(n=>`${n}:${sc[n]}`).join(',');return`[${w.dateStr}] ${shifts}`;}).join(' | ');
+  return`Shift Allocation: Các ca đang sử dụng: ${[...activeShifts].join(',')}. Chi tiết theo ngày: ${summary}`;
+}
+function buildTrendContext(){
+  if(!weekData.length)return'Chưa có dữ liệu.';
+  const rows=weekData.map(w=>{const e=getEff(w.d);return`${w.dateStr}(${w.event}): Inflow=${Math.round(w.inflow).toLocaleString()} HC=${e.weightedHC.toFixed(1)} Cov=${(e.coverage_pct*100).toFixed(1)}%`;}).join(' | ');
+  return`Trend Report — ${weekData.length} ngày: ${rows}`;
+}
+function buildWorkModeContext(data){
+  const rows=data.map(d=>`${d.dateStr}: WFH=${d.wfh} Floor=${d.floor}`).join(' | ');
+  return`Work Mode Report: ${rows}`;
+}
+
+// ── AI INSIGHT ENGINE ─────────────────────────────────────────────────────────
+const AI_PROMPTS={
+  week:'Bạn là chuyên gia WFM trong lĩnh vực E-commerce. Phân tích ngắn gọn Weekly Overview sau, nêu 3 insight quan trọng nhất về HC và coverage, kèm 1-2 khuyến nghị cụ thể. Trả lời bằng tiếng Việt, tối đa 200 từ.',
+  day:'Bạn là chuyên gia WFM trong lĩnh vực E-commerce. Phân tích Daily Detail sau, chỉ ra các giờ có vấn đề về coverage, nguyên nhân, và đề xuất điều chỉnh ca cụ thể. Trả lời bằng tiếng Việt, tối đa 200 từ.',
+  shift:'Bạn là chuyên gia WFM trong lĩnh vực E-commerce. Phân tích cấu trúc Shift Allocation sau, đánh giá sự phân bổ ca (FT/PT), xác định mô hình ca phổ biến và đề xuất tối ưu hoá. Trả lời bằng tiếng Việt, tối đa 200 từ.',
+  trend:'Bạn là chuyên gia WFM trong lĩnh vực E-commerce. Phân tích xu hướng Inflow, HC và Coverage theo thời gian, xác định patterns và dự đoán ngắn hạn. Trả lời bằng tiếng Việt, tối đa 200 từ.',
+  workmode:'Bạn là chuyên gia WFM trong lĩnh vực E-commerce. Phân tích phân bổ WFH vs On-Floor, đánh giá mức độ hợp lý và đề xuất điều chỉnh nếu cần. Trả lời bằng tiếng Việt, tối đa 200 từ.'
+};
+
+async function renderAIInsight(tabId, context){
+  const container=document.getElementById(`aiInsight-${tabId}`);
+  if(!container)return;
+  container.innerHTML=`<div class="ai-insight-loading"><span class="ai-spinner"></span> AI đang phân tích dữ liệu...</div>`;
+  try{
+    const resp=await fetch('/api/ai-insight',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tabId, context, prompt: AI_PROMPTS[tabId]})
+    });
+    const data=await resp.json();
+    if(!resp.ok) throw new Error(data.error||`HTTP ${resp.status}`);
+    const text=data.text||'Không nhận được phản hồi từ AI.';
+    container.innerHTML=`<div class="ai-insight-result">
+      <div class="ai-insight-header"><span class="ai-icon">✦</span> AI Insight</div>
+      <div class="ai-insight-body">${text.replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')}</div>
+    </div>`;
+  }catch(err){
+    container.innerHTML=`<div class="ai-insight-error">⚠ ${err.message}</div>`;
+  }
 }
 
 function setShiftManual(d,name,val){
@@ -739,7 +986,9 @@ function resetShift(){
 }
 
 function showTab(name){
-  const names=['data','week','day','shift'];
-  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',names[i]===name));
-  document.querySelectorAll('.section').forEach((s,i)=>s.classList.toggle('active',names[i]===name));
+  const names=['data','week','day','shift','trend','workmode'];
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
+  document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active', s.id===`sec-${name}`));
+  if(name==='trend' && weekData.length) renderTrend();
+  if(name==='workmode' && weekData.length) renderWorkMode();
 }

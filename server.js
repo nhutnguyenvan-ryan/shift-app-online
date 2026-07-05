@@ -221,6 +221,39 @@ app.get('/api/fetch-sheet', async (req, res) => {
   }
 });
 
+// ── API: AI INSIGHT ───────────────────────────────────────────────────────────
+// Server-side proxy tới Anthropic API — tránh expose API key trên frontend
+app.post('/api/ai-insight', async (req, res) => {
+  const { prompt, context } = req.body;
+  if (!prompt || !context) return res.status(400).json({ error: 'Missing prompt or context' });
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY chưa được cấu hình trên server' });
+
+  try {
+    const { default: fetch } = await import('node-fetch');
+    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': apiKey
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: `${prompt}\n\nDữ liệu:\n${context}` }]
+      })
+    });
+    const data = await upstream.json();
+    if (!upstream.ok) return res.status(502).json({ error: data.error?.message || `Anthropic API error ${upstream.status}` });
+    const text = data.content?.[0]?.text || '';
+    res.json({ text });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // ── API: CONFIG ───────────────────────────────────────────────────────────────
 app.get('/api/me', async (req, res) => {
   console.log('/api/me | user:', req.user?.email || 'none');
