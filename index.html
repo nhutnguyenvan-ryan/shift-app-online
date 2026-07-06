@@ -90,7 +90,7 @@
 
   <!-- SPECIAL DAY TARGETS PANEL -->
   <div class="special-target-panel hidden" id="specialTargetPanel">
-    <div class="stp-title">Coverage Target riêng cho từng loại ngày đặc biệt <span class="stp-sub">(để trống = dùng Coverage Target chung)</span></div>
+    <div class="stp-title">Custom Coverage Target by special day type <span class="stp-sub">(leave blank to use the global Coverage Target)</span></div>
     <div class="stp-grid" id="specialTargetGrid"></div>
   </div>
 
@@ -131,11 +131,11 @@
         <!-- Google Sheets input -->
         <div class="sheet-row">
           <span class="sheet-icon">📊</span>
-          <input type="url" id="sheetUrlInflow" class="sheet-input" placeholder="Link Google Sheets hoặc Spreadsheet ID">
+          <input type="url" id="sheetUrlInflow" class="sheet-input" placeholder="Google Sheets link or Spreadsheet ID">
           <input type="text" id="sheetNameInflow" class="sheet-tab-input" placeholder="Tab name" value="Inflow">
           <button class="btn-sheet" onclick="fetchSheetData('inflow')">Fetch</button>
         </div>
-        <div class="sheet-divider"><span>hoặc upload file</span></div>
+        <div class="sheet-divider"><span>or upload file</span></div>
         <div class="drop-zone" id="zone-inflow"
           onclick="document.getElementById('file-inflow').click()"
           ondragover="dragOver(event,'zone-inflow')" ondragleave="dragLeave('zone-inflow')" ondrop="dropFile(event,'inflow')">
@@ -160,11 +160,11 @@
         <!-- Google Sheets input -->
         <div class="sheet-row">
           <span class="sheet-icon">📊</span>
-          <input type="url" id="sheetUrlEnqueue" class="sheet-input" placeholder="Link Google Sheets hoặc Spreadsheet ID (optional)">
+          <input type="url" id="sheetUrlEnqueue" class="sheet-input" placeholder="Google Sheets link or Spreadsheet ID (optional)">
           <input type="text" id="sheetNameEnqueue" class="sheet-tab-input" placeholder="Tab name" value="Enqueue">
           <button class="btn-sheet" onclick="fetchSheetData('enqueue')">Fetch</button>
         </div>
-        <div class="sheet-divider"><span>hoặc upload file</span></div>
+        <div class="sheet-divider"><span>or upload file</span></div>
         <div class="drop-zone" id="zone-enqueue"
           onclick="document.getElementById('file-enqueue').click()"
           ondragover="dragOver(event,'zone-enqueue')" ondragleave="dragLeave('zone-enqueue')" ondrop="dropFile(event,'enqueue')">
@@ -175,13 +175,13 @@
         </div>
         <div id="status-enqueue" class="upload-status"></div>
         <div id="preview-enqueue" class="preview-wrap"></div>
-        <div class="enqueue-note">If not uploaded, default profiles by event type (Normal / Spike / Sat / Sun…) are used automatically.</div>
+        <div class="enqueue-note">If not uploaded, default profiles by event type (Normal / Spike / Sat / Sun…) are applied automatically.</div>
       </div>
     </div>
 
     <div class="data-actions">
       <button class="btn-run" onclick="applyAndRun()">▶ Apply & Run</button>
-      <button class="btn-outline" onclick="refreshAllSheets()">🔄 Refresh từ Sheets</button>
+      <button class="btn-outline" onclick="refreshAllSheets()">🔄 Refresh from Sheets</button>
       <button class="btn-outline" onclick="useSampleData()">Use sample data</button>
       <span id="applyStatus" class="apply-status"></span>
     </div>
@@ -228,7 +228,7 @@
   <!-- ── SHIFT TAB ── -->
   <div id="sec-shift" class="section">
     <div class="day-controls">
-      <div class="fg"><label>Select Day (for chart)</label>
+      <div class="fg"><label>Select Day (chart reference)</label>
         <select id="shiftDaySelect" onchange="renderShiftBreakdown()" class="day-select"></select>
       </div>
       <button class="btn-outline" onclick="resetShift()">↺ Reset to Optimal</button>
@@ -242,7 +242,7 @@
       </div>
     </div>
     <div class="chart-card">
-      <div class="chart-title">Mật độ nhân sự theo giờ — Staff Density Heatmap</div>
+      <div class="chart-title">Staff Density Heatmap — HC by Hour</div>
       <div id="shiftHeatmapWrap"></div>
     </div>
     <div id="aiInsight-shift" class="ai-insight-wrap"></div>
@@ -270,11 +270,11 @@
   <div id="sec-workmode" class="section">
     <div class="kpi-grid" id="workModeKPI"></div>
     <div class="chart-card">
-      <div class="chart-title">WFH vs On-Floor theo ngày</div>
+      <div class="chart-title">WFH vs On-Floor by Day</div>
       <div class="chart-wrap" style="height:260px"><canvas id="workModeChart"></canvas></div>
     </div>
     <div class="table-card">
-      <div class="table-card-title">Chi tiết theo ngày</div>
+      <div class="table-card-title">Daily Breakdown</div>
       <div class="table-scroll" id="workModeTable"></div>
     </div>
     <div id="aiInsight-workmode" class="ai-insight-wrap"></div>
@@ -291,7 +291,7 @@
     </div>
     <div class="modal-body">
       <div class="modal-section-title">Editor Access</div>
-      <p class="modal-note">Editors can change inputs, upload data, run optimizer and save configurations.</p>
+      <p class="modal-note">Editors can change inputs, upload data, run the optimizer, and save configurations.</p>
       <div class="add-editor-row">
         <input type="email" id="newEditorEmail" placeholder="email@example.com" class="editor-input">
         <button class="btn-run" onclick="addEditor()">Add Editor</button>

@@ -221,39 +221,65 @@ app.get('/api/fetch-sheet', async (req, res) => {
   }
 });
 
-// ── API: AI INSIGHT ───────────────────────────────────────────────────────────
-// Server-side proxy tới Anthropic API — tránh expose API key trên frontend
+// ── API: AI INSIGHT — via Hugging Face Inference API ─────────────────────────
 app.post('/api/ai-insight', async (req, res) => {
   const { prompt, context } = req.body;
   if (!prompt || !context) return res.status(400).json({ error: 'Missing prompt or context' });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    // Graceful fallback: trả về thông báo thay vì lỗi 503
+  const hfKey = process.env.HUGGINGFACE_API_KEY;
+  if (!hfKey) {
     return res.json({
-      text: '⚙️ AI Insight chưa được kích hoạt. Vui lòng thêm biến môi trường `ANTHROPIC_API_KEY` trên Render để sử dụng tính năng này.',
+      text: '⚙️ AI Insight is not activated. Please add the HUGGINGFACE_API_KEY environment variable on Render to enable this feature.',
       fallback: true
     });
   }
 
+  // Model: Mistral-7B-Instruct — miễn phí, chất lượng tốt cho text analysis
+  const HF_MODEL = process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.3';
+  const fullPrompt = `<s>[INST] ${prompt}\n\nData:\n${context} [/INST]`;
+
   try {
     const { default: fetch } = await import('node-fetch');
-    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
-        'x-api-key': apiKey
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: `${prompt}\n\nDữ liệu:\n${context}` }]
-      })
-    });
+    const upstream = await fetch(
+      `https://api-inference.huggingface.co/models/${HF_MODEL}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${hfKey}`
+        },
+        body: JSON.stringify({
+          inputs: fullPrompt,
+          parameters: {
+            max_new_tokens: 400,
+            temperature: 0.5,
+            do_sample: true,
+            return_full_text: false
+          }
+        })
+      }
+    );
+
+    if (!upstream.ok) {
+      const errText = await upstream.text();
+      // Model đang load — Hugging Face cần warmup lần đầu
+      if (upstream.status === 503) {
+        return res.json({
+          text: '⏳ AI model is warming up. Please try again in 20-30 seconds.',
+          fallback: true
+        });
+      }
+      return res.status(502).json({ error: `Hugging Face API error ${upstream.status}: ${errText.slice(0, 200)}` });
+    }
+
     const data = await upstream.json();
-    if (!upstream.ok) return res.status(502).json({ error: data.error?.message || `Anthropic API error ${upstream.status}` });
-    const text = data.content?.[0]?.text || '';
+    // HF trả về array hoặc object tuỳ model
+    const raw = Array.isArray(data)
+      ? (data[0]?.generated_text || '')
+      : (data?.generated_text || data?.text || '');
+
+    // Loại bỏ prompt echo nếu model trả về full text
+    const text = raw.replace(fullPrompt, '').trim() || 'No response from AI.';
     res.json({ text });
   } catch (err) {
     res.status(502).json({ error: err.message });

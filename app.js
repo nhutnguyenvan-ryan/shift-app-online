@@ -284,20 +284,20 @@ function isAppsScriptURL(url){
 async function fetchSheetData(type){
   const inputId=type==='inflow'?'sheetUrlInflow':'sheetUrlEnqueue';
   const raw=document.getElementById(inputId).value.trim();
-  if(!raw){setStatus(type,'⚠ Nhập Spreadsheet URL hoặc ID trước','err');return;}
+  if(!raw){setStatus(type,'⚠ Please enter a Spreadsheet URL or ID first','err');return;}
 
   // Lấy spreadsheetId từ URL hoặc raw ID
   let spreadsheetId='';
   const m=raw.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
   if(m) spreadsheetId=m[1];
   else if(/^[a-zA-Z0-9_-]{20,}$/.test(raw)) spreadsheetId=raw;
-  else{setStatus(type,'❌ URL không hợp lệ — cần link Google Sheets hoặc Spreadsheet ID','err');return;}
+  else{setStatus(type,'❌ Invalid URL — please provide a Google Sheets link or Spreadsheet ID','err');return;}
 
   const sheetName=type==='inflow'
     ?(document.getElementById('sheetNameInflow')||{value:'Inflow'}).value||'Inflow'
     :(document.getElementById('sheetNameEnqueue')||{value:'Enqueue'}).value||'Enqueue';
 
-  setStatus(type,'⏳ Đang tải từ Google Sheets…','');
+  setStatus(type,'⏳ Loading from Google Sheets…','');
   try{
     const res=await fetch(`/api/fetch-sheet?type=${type}&spreadsheetId=${encodeURIComponent(spreadsheetId)}&sheet=${encodeURIComponent(sheetName)}`);
     const json=await res.json();
@@ -318,7 +318,7 @@ function parseInflowJSON(rows){
     const val=parseFloat(r.inflow||r.Inflow||0);
     if(ds&&!isNaN(val)){inflowData[ds]=val;ok++;}
   });
-  setStatus('inflow',`✅ Loaded ${ok} days từ Google Sheets`,'ok');
+  setStatus('inflow',`✅ Loaded ${ok} days from Google Sheets`,'ok');
   renderPreview('inflow',Object.entries(inflowData).slice(0,5).map(([d,v])=>({Date:d,Inflow:Math.round(v).toLocaleString()})));
 }
 
@@ -329,7 +329,7 @@ function parseEnqueueJSON(rows){
     const arr=Array.from({length:24},(_,h)=>parseFloat(r['h'+h]||r['H'+h]||0));
     if(ds&&arr.some(v=>v>0)){enqueueData[ds]=arr;ok++;}
   });
-  setStatus('enqueue',`✅ Loaded ${ok} days từ Google Sheets`,'ok');
+  setStatus('enqueue',`✅ Loaded ${ok} days from Google Sheets`,'ok');
   const prev=Object.entries(enqueueData).slice(0,3).map(([d,arr])=>({Date:d,'h0':(arr[0]*100).toFixed(1)+'%','h9':(arr[9]*100).toFixed(1)+'%','h12':(arr[12]*100).toFixed(1)+'%','h18':(arr[18]*100).toFixed(1)+'%','…':'…'}));
   renderPreview('enqueue',prev);
 }
@@ -338,7 +338,7 @@ async function refreshAllSheets(){
   let fetched=0;
   if(window._sheetUrlInflow){document.getElementById('sheetUrlInflow').value=window._sheetUrlInflow;await fetchSheetData('inflow');fetched++;}
   if(window._sheetUrlEnqueue){document.getElementById('sheetUrlEnqueue').value=window._sheetUrlEnqueue;await fetchSheetData('enqueue');fetched++;}
-  if(!fetched)setStatus('inflow','⚠ Chưa có Sheet URL nào được lưu','err');
+  if(!fetched)setStatus('inflow','⚠ No Sheet URL saved yet','err');
 }
 
 // ── SHIFT DEFINITIONS ─────────────────────────────────────────────────────────
@@ -468,7 +468,7 @@ function addDays(ds,n){const dt=parseDateStr(ds);dt.setDate(dt.getDate()+n);retu
 function getDOW(ds){return parseDateStr(ds).getDay();}
 
 const DOW_LABELS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const DOW_VN=['Chủ Nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'];
+const DOW_VN=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const EVT_COLORS={Normal:{bg:'rgba(52,216,158,.15)',text:'#34d89e'},Spike:{bg:'rgba(255,91,91,.15)',text:'#ff5b5b'},'Spike-1':{bg:'rgba(255,180,50,.15)',text:'#ffb432'},'14th':{bg:'rgba(91,143,255,.15)',text:'#5b8fff'},'15th':{bg:'rgba(91,143,255,.15)',text:'#5b8fff'},'24th':{bg:'rgba(200,100,200,.15)',text:'#c864c8'},'25th':{bg:'rgba(200,100,200,.15)',text:'#c864c8'},Sat:{bg:'rgba(255,255,255,.06)',text:'#8b90a8'},Sun:{bg:'rgba(255,255,255,.06)',text:'#8b90a8'}};
 
 function getTargetFor(event){
@@ -737,7 +737,7 @@ function renderShiftHeatmap(){
   const colW=Math.max(52, Math.floor((wrap.offsetWidth-130)/Math.max(weekData.length,1)));
 
   let html=`<div class="heatmap-scroll"><table class="heatmap-table">
-    <thead><tr><th class="hm-label-col">Giờ</th>
+    <thead><tr><th class="hm-label-col">Hour</th>
     ${weekData.map(w=>`<th style="min-width:${colW}px"><div style="font-size:10px;color:#7c84a3;font-weight:700">${w.dowLabel}</div><div style="font-size:9px;color:#a8afc8">${w.dateStr.slice(0,5)}</div></th>`).join('')}
     </tr></thead><tbody>`;
 
@@ -758,20 +758,20 @@ function renderShiftHeatmap(){
   // Chú thích
   html+=`<div class="heatmap-legend">
     <span style="font-size:11px;color:#7c84a3;margin-right:12px">Mật độ:</span>
-    ${['Thấp','Trung bình','Cao','Cao điểm'].map((lb,i)=>{
+    ${['Low','Medium','High','Peak'].map((lb,i)=>{
       const pcts=[0.1,0.35,0.65,1];
       const bg=i===0?'#f1f3f8':`rgba(37,99,235,${pcts[i]})`;
       return`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:11px;color:#7c84a3">
         <span style="width:14px;height:14px;background:${bg};border-radius:3px;display:inline-block"></span>${lb}</span>`;
     }).join('')}
-    <span style="font-size:10px;color:#a8afc8;margin-left:8px">★ = giờ cao điểm nhất</span>
+    <span style="font-size:10px;color:#a8afc8;margin-left:8px">★ = peak hour</span>
   </div>`;
 
   wrap.innerHTML=html;
 }
 
 // ── WORK MODE LOGIC ───────────────────────────────────────────────────────────
-// WFH: Ca kết thúc sau 19h  HOẶC  Ca Fulltime bắt đầu > 12h (tức >= 13h)
+// WFH: Shift ends after 19:00 OR Fulltime shift starts > 12:00 (i.e. >= 13:00)
 function getShiftEndHour(s){
   if(s.brk!==null){
     // FT: start + 9 slots (8 giờ làm + 1 giờ nghỉ)
@@ -784,7 +784,7 @@ function getShiftEndHour(s){
 function isWFH(s){
   const isFT = s.cost===1;
   const endH = getShiftEndHour(s);
-  // Ca kết thúc sau 19h: endH là 20,21,...,23, hoặc vắt sang đêm (0..7)
+  // Shift ends after 19:00: endH is 20-23, or overnight (0-7)
   const endAfter19 = (endH>=20 && endH<=23) || (endH>=0 && endH<=8);
   // Ca FT bắt đầu > 12h (bắt đầu từ 13h trở đi)
   if(isFT && (s.start%24) > 12) return true;
@@ -816,10 +816,10 @@ function renderWorkMode(){
   const totalFloor=data.reduce((s,d)=>s+d.floor,0);
   const pctWfh=totalWfh/(totalWfh+totalFloor||1)*100;
   document.getElementById('workModeKPI').innerHTML=`
-    <div class="kpi-card"><div class="kpi-label">Tổng WFH (HC)</div><div class="kpi-value" style="color:#7c3aed">${totalWfh.toFixed(1)}</div><div class="kpi-sub">Ca kết thúc sau 19h hoặc FT từ 13h</div></div>
-    <div class="kpi-card"><div class="kpi-label">Tổng On-Floor (HC)</div><div class="kpi-value" style="color:#059669">${totalFloor.toFixed(1)}</div><div class="kpi-sub">Còn lại</div></div>
-    <div class="kpi-card"><div class="kpi-label">Tỉ lệ WFH</div><div class="kpi-value" style="color:#2563eb">${pctWfh.toFixed(1)}%</div><div class="kpi-sub">Trên tổng HC cả tuần</div></div>
-    <div class="kpi-card"><div class="kpi-label">Số ngày có WFH</div><div class="kpi-value kv-neutral">${data.filter(d=>d.wfh>0).length}</div><div class="kpi-sub">/ ${data.length} ngày</div></div>`;
+    <div class="kpi-card"><div class="kpi-label">Total WFH (HC)</div><div class="kpi-value" style="color:#7c3aed">${totalWfh.toFixed(1)}</div><div class="kpi-sub">Shifts ending after 19:00 or FT from 13:00</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total On-Floor (HC)</div><div class="kpi-value" style="color:#059669">${totalFloor.toFixed(1)}</div><div class="kpi-sub">Remaining shifts</div></div>
+    <div class="kpi-card"><div class="kpi-label">WFH Rate</div><div class="kpi-value" style="color:#2563eb">${pctWfh.toFixed(1)}%</div><div class="kpi-sub">Over total weekly HC</div></div>
+    <div class="kpi-card"><div class="kpi-label">Days with WFH</div><div class="kpi-value kv-neutral">${data.filter(d=>d.wfh>0).length}</div><div class="kpi-sub">/ ${data.length} days</div></div>`;
 
   // Chart
   if(workChart)workChart.destroy();
@@ -852,8 +852,8 @@ function renderWorkMode(){
   // Table chi tiết
   document.getElementById('workModeTable').innerHTML=`
     <table class="data-table"><thead><tr>
-      <th>Ngày</th><th>Thứ</th><th>Sự kiện</th>
-      <th>WFH (HC)</th><th>On-Floor (HC)</th><th>Tổng</th><th>% WFH</th>
+      <th>Date</th><th>Day</th><th>Event</th>
+      <th>WFH (HC)</th><th>On-Floor (HC)</th><th>Total</th><th>% WFH</th>
     </tr></thead><tbody>
     ${data.map(d=>{
       const pct=d.total>0?(d.wfh/d.total*100).toFixed(1):'0.0';
@@ -930,27 +930,27 @@ function renderTrend(){
 
 // ── CONTEXT BUILDERS cho AI Insight ──────────────────────────────────────────
 function buildWeekContext(){
-  if(!weekData.length)return'Chưa có dữ liệu.';
-  return`Báo cáo Weekly Overview: ${weekData.length} ngày. `+
+  if(!weekData.length)return'No data available.';
+  return`Weekly Overview Report: ${weekData.length} days. `+
     weekData.map(w=>{const e=getEff(w.d);return`[${w.dateStr} ${w.event}] Inflow:${Math.round(w.inflow).toLocaleString()} HC:${e.weightedHC.toFixed(1)} Cov:${(e.coverage_pct*100).toFixed(1)}% Target:${(w.eventTarget*100).toFixed(1)}%`;}).join(' | ');
 }
 function buildDayContext(){
   const d=parseInt(document.getElementById('daySelect').value);
-  if(!weekData[d])return'Chưa có dữ liệu.';
+  if(!weekData[d])return'No data available.';
   const wd=weekData[d],e=getEff(d);
   return`Ngày ${wd.dateStr} (${wd.event}): Inflow ${Math.round(wd.inflow).toLocaleString()}, HC ${e.weightedHC.toFixed(1)} (FT ${e.ft} PT ${e.pt}), Coverage ${(e.coverage_pct*100).toFixed(1)}%, Target ${(wd.eventTarget*100).toFixed(1)}%. Hourly coverage: ${e.coverage.map((v,h)=>`${h}h:${v}`).join(',')}`;
 }
 function buildShiftContext(){
-  if(!weekData.length)return'Chưa có dữ liệu.';
+  if(!weekData.length)return'No data available.';
   const activeShifts=new Set();
   weekData.forEach(w=>{const sc=getEff(w.d).shiftCounts;ALL_SHIFTS.forEach(s=>{if((sc[s.name]||0)>0)activeShifts.add(s.name);});});
   const summary=weekData.map(w=>{const sc=getEff(w.d).shiftCounts;const shifts=[...activeShifts].filter(n=>sc[n]>0).map(n=>`${n}:${sc[n]}`).join(',');return`[${w.dateStr}] ${shifts}`;}).join(' | ');
-  return`Shift Allocation: Các ca đang sử dụng: ${[...activeShifts].join(',')}. Chi tiết theo ngày: ${summary}`;
+  return`Shift Allocation — Active shifts: ${[...activeShifts].join(',')}. Daily breakdown: ${summary}`;
 }
 function buildTrendContext(){
-  if(!weekData.length)return'Chưa có dữ liệu.';
+  if(!weekData.length)return'No data available.';
   const rows=weekData.map(w=>{const e=getEff(w.d);return`${w.dateStr}(${w.event}): Inflow=${Math.round(w.inflow).toLocaleString()} HC=${e.weightedHC.toFixed(1)} Cov=${(e.coverage_pct*100).toFixed(1)}%`;}).join(' | ');
-  return`Trend Report — ${weekData.length} ngày: ${rows}`;
+  return`Trend Report — ${weekData.length} days: ${rows}`;
 }
 function buildWorkModeContext(data){
   const rows=data.map(d=>`${d.dateStr}: WFH=${d.wfh} Floor=${d.floor}`).join(' | ');
@@ -959,17 +959,17 @@ function buildWorkModeContext(data){
 
 // ── AI INSIGHT ENGINE ─────────────────────────────────────────────────────────
 const AI_PROMPTS={
-  week:'Bạn là chuyên gia WFM trong lĩnh vực E-commerce. Phân tích ngắn gọn Weekly Overview sau, nêu 3 insight quan trọng nhất về HC và coverage, kèm 1-2 khuyến nghị cụ thể. Trả lời bằng tiếng Việt, tối đa 200 từ.',
-  day:'Bạn là chuyên gia WFM trong lĩnh vực E-commerce. Phân tích Daily Detail sau, chỉ ra các giờ có vấn đề về coverage, nguyên nhân, và đề xuất điều chỉnh ca cụ thể. Trả lời bằng tiếng Việt, tối đa 200 từ.',
-  shift:'Bạn là chuyên gia WFM trong lĩnh vực E-commerce. Phân tích cấu trúc Shift Allocation sau, đánh giá sự phân bổ ca (FT/PT), xác định mô hình ca phổ biến và đề xuất tối ưu hoá. Trả lời bằng tiếng Việt, tối đa 200 từ.',
-  trend:'Bạn là chuyên gia WFM trong lĩnh vực E-commerce. Phân tích xu hướng Inflow, HC và Coverage theo thời gian, xác định patterns và dự đoán ngắn hạn. Trả lời bằng tiếng Việt, tối đa 200 từ.',
-  workmode:'Bạn là chuyên gia WFM trong lĩnh vực E-commerce. Phân tích phân bổ WFH vs On-Floor, đánh giá mức độ hợp lý và đề xuất điều chỉnh nếu cần. Trả lời bằng tiếng Việt, tối đa 200 từ.'
+  week:'You are a WFM expert in E-commerce. Briefly analyze the following Weekly Overview, highlight the 3 most important insights about HC and coverage, and provide 1-2 specific recommendations. Reply in English, max 200 words.',
+  day:'You are a WFM expert in E-commerce. Analyze the following Daily Detail, identify hours with coverage issues, explain the root cause, and suggest specific shift adjustments. Reply in English, max 200 words.',
+  shift:'You are a WFM expert in E-commerce. Analyze the following Shift Allocation structure, evaluate FT/PT distribution, identify common shift patterns, and suggest optimizations. Reply in English, max 200 words.',
+  trend:'You are a WFM expert in E-commerce. Analyze the Inflow, HC, and Coverage trends over time, identify patterns, and provide a short-term outlook. Reply in English, max 200 words.',
+  workmode:'You are a WFM expert in E-commerce. Analyze the WFH vs On-Floor distribution, assess its appropriateness for operational needs, and recommend adjustments if necessary. Reply in English, max 200 words.'
 };
 
 async function renderAIInsight(tabId, context){
   const container=document.getElementById(`aiInsight-${tabId}`);
   if(!container)return;
-  container.innerHTML=`<div class="ai-insight-loading"><span class="ai-spinner"></span> AI đang phân tích dữ liệu...</div>`;
+  container.innerHTML=`<div class="ai-insight-loading"><span class="ai-spinner"></span> AI is analyzing data...</div>`;
   try{
     const resp=await fetch('/api/ai-insight',{
       method:'POST',
@@ -978,7 +978,7 @@ async function renderAIInsight(tabId, context){
     });
     const data=await resp.json();
     if(!resp.ok) throw new Error(data.error||`HTTP ${resp.status}`);
-    const text=data.text||'Không nhận được phản hồi từ AI.';
+    const text=data.text||'No response received from AI.';
     // Nếu là fallback (chưa cấu hình API key) thì hiển thị dạng thông báo nhẹ
     if(data.fallback){
       container.innerHTML=`<div class="ai-insight-fallback"><span style="opacity:.5">✦</span> ${text}</div>`;
