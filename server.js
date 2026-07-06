@@ -221,67 +221,60 @@ app.get('/api/fetch-sheet', async (req, res) => {
   }
 });
 
-// ── API: AI INSIGHT — via Hugging Face Inference API ─────────────────────────
+// ── API: AI INSIGHT — via Groq API (OpenAI-compatible, free tier) ─────────────
+// Groq: https://console.groq.com — đăng ký miễn phí, lấy API key ngay
+// Model mặc định: llama3-8b-8192 (nhanh, miễn phí, không giới hạn egress)
 app.post('/api/ai-insight', async (req, res) => {
   const { prompt, context } = req.body;
   if (!prompt || !context) return res.status(400).json({ error: 'Missing prompt or context' });
 
-  const hfKey = process.env.HUGGINGFACE_API_KEY;
-  if (!hfKey) {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) {
     return res.json({
-      text: '⚙️ AI Insight is not activated. Please add the HUGGINGFACE_API_KEY environment variable on Render to enable this feature.',
+      text: '⚙️ AI Insight is not activated. Please add the GROQ_API_KEY environment variable on Render to enable this feature. Get a free key at console.groq.com.',
       fallback: true
     });
   }
 
-  // Model: Mistral-7B-Instruct — miễn phí, chất lượng tốt cho text analysis
-  const HF_MODEL = process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.3';
-  const fullPrompt = `<s>[INST] ${prompt}\n\nData:\n${context} [/INST]`;
+  const model = process.env.GROQ_MODEL || 'llama3-8b-8192';
 
   try {
     const { default: fetch } = await import('node-fetch');
-    const upstream = await fetch(
-      `https://api-inference.huggingface.co/models/${HF_MODEL}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${hfKey}`
-        },
-        body: JSON.stringify({
-          inputs: fullPrompt,
-          parameters: {
-            max_new_tokens: 400,
-            temperature: 0.5,
-            do_sample: true,
-            return_full_text: false
+    const upstream = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${groqKey}`
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 400,
+        temperature: 0.5,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a senior Workforce Management expert specializing in E-commerce contact centers. Be concise, data-driven, and actionable.'
+          },
+          {
+            role: 'user',
+            content: `${prompt}\n\nData:\n${context}`
           }
-        })
-      }
-    );
+        ]
+      })
+    });
 
     if (!upstream.ok) {
-      const errText = await upstream.text();
-      // Model đang load — Hugging Face cần warmup lần đầu
-      if (upstream.status === 503) {
-        return res.json({
-          text: '⏳ AI model is warming up. Please try again in 20-30 seconds.',
-          fallback: true
-        });
-      }
-      return res.status(502).json({ error: `Hugging Face API error ${upstream.status}: ${errText.slice(0, 200)}` });
+      const errData = await upstream.json().catch(() => ({}));
+      const msg = errData?.error?.message || `Groq API error ${upstream.status}`;
+      console.error('Groq API error:', msg);
+      return res.status(502).json({ error: msg });
     }
 
     const data = await upstream.json();
-    // HF trả về array hoặc object tuỳ model
-    const raw = Array.isArray(data)
-      ? (data[0]?.generated_text || '')
-      : (data?.generated_text || data?.text || '');
-
-    // Loại bỏ prompt echo nếu model trả về full text
-    const text = raw.replace(fullPrompt, '').trim() || 'No response from AI.';
+    const text = data.choices?.[0]?.message?.content?.trim() || 'No response from AI.';
     res.json({ text });
   } catch (err) {
+    console.error('AI insight error:', err.message);
     res.status(502).json({ error: err.message });
   }
 });
