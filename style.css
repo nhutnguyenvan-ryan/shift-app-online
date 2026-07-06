@@ -47,9 +47,9 @@
   --bg4:      var(--surface4);
 
   /* Typography */
-  --sans: 'Roboto', Arial, sans-serif;
-  --mono: 'Roboto Mono', 'Consolas', monospace;
-  --display: 'Roboto', Arial, sans-serif;
+  --sans: 'Times New Roman', Times, serif;
+  --mono: 'Times New Roman', Times, serif;
+  --display: 'Times New Roman', Times, serif;
 
   /* Geometry */
   --radius:    12px;
@@ -178,7 +178,7 @@ body {
 }
 .param-group {
   display: flex; flex-direction: column; justify-content: center;
-  gap: 5px; padding: 14px 20px;
+  gap: 4px; padding: 10px 14px;
 }
 .param-group:first-child { border-left: 3px solid var(--blue); }
 .param-group label {
@@ -187,8 +187,8 @@ body {
 }
 .param-unit { color: var(--text4); font-size: 9px; font-style: normal }
 .param-group input {
-  height: 36px; width: 96px; padding: 0 10px;
-  font-size: 16px; font-weight: 600;
+  height: 30px; width: 78px; padding: 0 8px;
+  font-size: 13px; font-weight: 600;
   font-family: var(--mono); color: var(--text);
   background: var(--surface2);
   border: 1.5px solid var(--border);
@@ -198,8 +198,8 @@ body {
 .param-group input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.1) }
 .param-group input:disabled { opacity: .4; cursor: not-allowed }
 .derived .derived-val {
-  font-family: var(--mono); font-size: 17px; font-weight: 700;
-  color: var(--blue); height: 36px; display: flex; align-items: center;
+  font-family: var(--mono); font-size: 14px; font-weight: 700;
+  color: var(--blue); height: 30px; display: flex; align-items: center;
 }
 .derived-formula { font-size: 10px; color: var(--text4); font-family: var(--mono) }
 .param-sep { width: 1px; background: var(--border); align-self: stretch; margin: 0 }

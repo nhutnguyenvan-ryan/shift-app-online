@@ -808,7 +808,6 @@ function buildWorkModeData(){
 let workChart=null;
 function renderWorkMode(){
   if(!weekData.length)return;
-  if(window.ChartDataLabels) Chart.register(ChartDataLabels);
   const data=buildWorkModeData();
 
   // KPI
@@ -821,9 +820,11 @@ function renderWorkMode(){
     <div class="kpi-card"><div class="kpi-label">WFH Rate</div><div class="kpi-value" style="color:#2563eb">${pctWfh.toFixed(1)}%</div><div class="kpi-sub">Over total weekly HC</div></div>
     <div class="kpi-card"><div class="kpi-label">Days with WFH</div><div class="kpi-value kv-neutral">${data.filter(d=>d.wfh>0).length}</div><div class="kpi-sub">/ ${data.length} days</div></div>`;
 
-  // Chart
-  if(workChart)workChart.destroy();
-  workChart=new Chart(document.getElementById('workModeChart'),{
+  // Chart — destroy và reset canvas để tránh zombie instance
+  if(workChart){workChart.destroy();workChart=null;}
+  const wmCanvas=document.getElementById('workModeChart');
+  wmCanvas.getContext('2d').clearRect(0,0,wmCanvas.width,wmCanvas.height);
+  workChart=new Chart(wmCanvas,{
     type:'bar',
     data:{
       labels:data.map(d=>`${d.dowLabel}\n${d.dateStr.slice(0,5)}`),
@@ -838,7 +839,7 @@ function renderWorkMode(){
         tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y} HC`}},
         datalabels:{
           display:(ctx)=>ctx.parsed.y>0,
-          color:'#fff',font:{size:9,family:'Roboto Mono',weight:'700'},
+          color:'#fff',font:{size:9,weight:'700'},
           anchor:'center',align:'center',
           formatter:v=>v>0?v.toFixed(1):''
         }
@@ -875,8 +876,6 @@ function renderWorkMode(){
 let trendChart1=null,trendChart2=null,trendChart3=null;
 function renderTrend(){
   if(!weekData.length)return;
-  // Đăng ký plugin datalabels chỉ khi cần
-  if(window.ChartDataLabels) Chart.register(ChartDataLabels);
   const labels=weekData.map(w=>`${w.dowLabel} ${w.dateStr.slice(0,5)}`);
   const inflows=weekData.map(w=>Math.round(w.inflow));
   const hcs=weekData.map(w=>+getEff(w.d).weightedHC.toFixed(1));
@@ -896,7 +895,7 @@ function renderTrend(){
     type:'line',
     data:{labels,datasets:[{label:'Inflow (tasks)',data:inflows,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.08)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#2563eb'}]},
     options:{...commonOpts('Inflow'),plugins:{...commonOpts('Inflow').plugins,
-      datalabels:{display:true,align:'top',anchor:'end',color:'#2563eb',font:{size:9,family:'Roboto Mono',weight:'500'},
+      datalabels:{display:true,align:'top',anchor:'end',color:'#2563eb',font:{size:9,weight:'500'},
         formatter:v=>v>=1000?(v/1000).toFixed(1)+'k':v}}}
   });
 
@@ -907,7 +906,7 @@ function renderTrend(){
       {label:'HC Order (FT+PT/2)',data:hcs,borderColor:'#7c3aed',backgroundColor:'rgba(124,58,237,.08)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#7c3aed'}
     ]},
     options:{...commonOpts('HC Order'),plugins:{...commonOpts('HC Order').plugins,
-      datalabels:{display:true,align:'top',anchor:'end',color:'#7c3aed',font:{size:9,family:'Roboto Mono',weight:'500'},
+      datalabels:{display:true,align:'top',anchor:'end',color:'#7c3aed',font:{size:9,weight:'500'},
         formatter:v=>v.toFixed(1)}}}
   });
 
@@ -921,7 +920,7 @@ function renderTrend(){
     ]},
     options:{...cov3opts,plugins:{...cov3opts.plugins,
       datalabels:{display:(ctx)=>ctx.datasetIndex===0,align:'top',anchor:'end',
-        color:'#059669',font:{size:9,family:'Roboto Mono',weight:'500'},
+        color:'#059669',font:{size:9,weight:'500'},
         formatter:v=>v.toFixed(1)+'%'}}}
   });
 
