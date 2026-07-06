@@ -236,7 +236,7 @@ app.post('/api/ai-insight', async (req, res) => {
     });
   }
 
-  const model = process.env.GROQ_MODEL || 'llama3-8b-8192';
+  const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 
   try {
     const { default: fetch } = await import('node-fetch');
