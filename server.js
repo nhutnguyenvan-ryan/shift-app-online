@@ -323,6 +323,53 @@ app.delete('/api/users/editors/:email', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── API: TRIGGER AUTO SCHEDULE FOR MAKE ───────────────────────────────────────
+// POST /api/trigger-schedule
+app.post('/api/trigger-schedule', async (req, res) => {
+  try {
+    // 1. Kiểm tra API Key bảo mật từ Make gửi sang
+    const makeApiKey = req.headers['x-api-key'];
+    const expectedKey = process.env.MAKE_API_KEY || 'a_secret_fallback_key_123';
+    
+    if (!makeApiKey || makeApiKey !== expectedKey) {
+      return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
+    }
+
+    // 2. Lấy tham số cấu hình (nếu Make có truyền sang, ví dụ: spreadsheetId)
+    const { spreadsheetId, sheetName } = req.body;
+
+    console.log(`[Make Trigger] Chạy thuật toán xếp lịch tự động cho Sheet: ${spreadsheetId}`);
+
+    // 3. GỌI LOGIC/THUẬT TOÁN XẾP LỊCH CỦA BẠN Ở ĐÂY
+    // (Bạn hãy thay thế hàm `runYourSchedulingAlgorithm` bằng hàm xếp lịch thực tế trong code của bạn)
+    const scheduleResult = await runYourSchedulingAlgorithm(spreadsheetId, sheetName);
+
+    // 4. Trả kết quả JSON về cho Make để Agent 2 xử lý tiếp
+    res.json({
+      status: 'success',
+      generated_at: new Date().toISOString(),
+      data: scheduleResult 
+      /* Cấu trúc data trả về nên là mảng các dòng: 
+         [{ "id": "NV01", "name": "Nguyen Van A", "date": "2026-07-08", "hours": 8, "off": false }, ...] 
+      */
+    });
+
+  } catch (err) {
+    console.error('Trigger schedule error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Hàm mô phỏng thuật toán của bạn (Hãy kết nối với logic xếp lịch thực tế của bạn nhé)
+async function runYourSchedulingAlgorithm(spreadsheetId, sheetName) {
+  // Logic thuật toán tự động tính toán ca kíp dựa trên Inflow/Enqueue...
+  // ...
+  return [
+    { id: "NV01", name: "Nhút Nguyễn", date: "2026-07-13", shift: "Morning", hours: 8, off: false },
+    { id: "NV02", name: "Ryan Van", date: "2026-07-13", shift: "Off", hours: 0, off: true }
+  ];
+}
+
 // ── STATIC ────────────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
