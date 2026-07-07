@@ -221,11 +221,9 @@ app.get('/api/fetch-sheet', async (req, res) => {
   }
 });
 
-// ── API: TRIGGER AUTO SCHEDULE FOR MAKE ───────────────────────────────────────
-// POST /api/trigger-schedule
+// ── API: TRIGGER AUTO SCHEDULE (BÊ NGUYÊN XI MA TRẬN 100% ĐỘNG) ──────────────
 app.post('/api/trigger-schedule', async (req, res) => {
   try {
-    // 1. Kiểm tra API Key bảo mật để chỉ cho phép Make gọi vào
     const makeApiKey = req.headers['x-api-key'];
     const expectedKey = process.env.MAKE_API_KEY || 'ShiftIQ_Make_Secret_2026_@';
     
@@ -233,50 +231,32 @@ app.post('/api/trigger-schedule', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
     }
 
-    console.log(`[Make Trigger] Đang chạy thuật toán bóc tách dữ liệu ma trận tuần...`);
+    // 1. Lấy dữ liệu thô từ thuật toán/giao diện web của bạn tại thời điểm đó
+    const rawWebTableData = await getActualWebTableData();
 
-    // 2. GỌI LOGIC TÍNH TOÁN VÀ FORMAT DỮ LIỆU ĐỘNG THEO THỨ
-    // (Hàm này mô phỏng việc lấy dữ liệu từ bảng của bạn và biến đổi thành các Key cố định mon, tue, wed...)
-    const dynamicMatrixData = await getDynamicScheduleMatrix();
+    // 2. TỰ ĐỘNG CHUYỂN ĐỔI THÀNH MẢNG 2 CHIỀU (GRID)
+    const matrixGrid = [];
 
-    // 3. Trả kết quả về cho Make hứng dưới dạng JSON
+    // Dòng đầu tiên: Tên cột + Toàn bộ các ngày đang hiển thị
+    const headerRow = ["Chỉ số (Metric)", ...rawWebTableData.dates];
+    matrixGrid.push(headerRow);
+
+    // Các dòng tiếp theo: Duyệt qua từng hàng chỉ số/ca kíp bất kỳ
+    rawWebTableData.metrics.forEach(m => {
+      const dataRow = [m.name, ...m.values];
+      matrixGrid.push(dataRow);
+    });
+
+    // 3. Trả về cấu trúc cực kỳ tối giản cho Make
     res.json({
       status: 'success',
-      generated_at: new Date().toISOString(),
-      data: dynamicMatrixData
+      values: matrixGrid // Đây là một mảng chứa các mảng con (Rows)
     });
 
   } catch (err) {
-    console.error('Trigger schedule error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
-// Hàm helper để tạo cấu trúc ma trận động theo thứ (MON, TUE, WED...)
-async function getDynamicScheduleMatrix() {
-  // Thực tế ở đây bạn sẽ lấy data từ database hoặc từ hàm tối ưu xếp lịch của bạn
-  // Sau đó dùng code JS để map các ngày thực tế vào các thứ cố định.
-  
-  // Dưới đây là dữ liệu mẫu sau khi được code của bạn xử lý tự động:
-  return [
-    {
-      "metric": "DATE", 
-      "mon": "29.06.2026", "tue": "30.06.2026", "wed": "01.07.2026", "thu": "02.07.2026", "fri": "03.07.2026", "sat": "04.07.2026", "sun": "05.07.2026"
-    },
-    {
-      "metric": "Inflow",
-      "mon": 80711, "tue": 80711, "wed": 80711, "thu": 80711, "fri": 80711, "sat": 75774, "sun": 78975
-    },
-    {
-      "metric": "Total HC Order",
-      "mon": 9.0, "tue": 9.0, "wed": 9.0, "thu": 9.0, "fri": 9.0, "sat": 8.0, "sun": 8.5
-    },
-    {
-      "metric": "S0*",
-      "mon": 2.0, "tue": 2.0, "wed": 2.0, "thu": 2.0, "fri": 2.0, "sat": 2.0, "sun": 2.0
-    }
-  ];
-}
 
 // ── API: AI INSIGHT — via Groq API (OpenAI-compatible, free tier) ─────────────
 // Groq: https://console.groq.com — đăng ký miễn phí, lấy API key ngay
