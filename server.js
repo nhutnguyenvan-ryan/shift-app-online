@@ -323,10 +323,9 @@ app.delete('/api/users/editors/:email', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── API: TRIGGER AUTO SCHEDULE (MẢNG 2 CHIỀU ĐỘNG 100% - CO GIÃN THEO DATA) ──
+// ── API: TRIGGER AUTO SCHEDULE (MẢNG 2 CHIỀU ĐỘNG 100%) ──────────────────────
 app.post('/api/trigger-schedule', async (req, res) => {
   try {
-    // 1. Xác thực API Key bảo mật từ Make gửi sang
     const makeApiKey = req.headers['x-api-key'];
     const expectedKey = process.env.MAKE_API_KEY || 'ShiftIQ_Make_Secret_2026_@';
     
@@ -334,22 +333,35 @@ app.post('/api/trigger-schedule', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
     }
 
-    console.log(`[Make Trigger] Đang tự động quét cấu trúc ma trận động thực tế...`);
+    console.log(`[Make Trigger] Đang xử lý bóc tách ma trận bảng từ luồng dữ liệu...`);
 
-    // 2. Gọi hàm tự động bóc tách dữ liệu từ file Google Sheet gốc của bạn
+    // Lấy ma trận dữ liệu từ hàm tính toán
     const matrixGrid = await generateLiveMatrixGrid(req.body.spreadsheetId);
 
-    // 3. Trả về mảng 2 chiều phẳng (Lưới) để Make dán thẳng vào Google Sheet của Agent 2
+    // CHÍNH SỬA TẠI ĐÂY: Biến đổi mảng 2 chiều thành định dạng mảng dòng (Array of Collections) chuẩn Make
+    const formattedRows = matrixGrid.map(row => ({ values: row }));
+
+    // Trả về đúng trường "rows" để Make đọc trực tiếp
     res.json({
       status: 'success',
-      values: matrixGrid
+      rows: formattedRows
     });
 
   } catch (err) {
     console.error('Trigger schedule error:', err.message);
-    res.status(500).json({ error: err.message });
+    
+    // Khi có lỗi xảy ra, cũng trả về định dạng dòng chuẩn lỗi để không bị sập Make
+    const errorGrid = [
+      ["Chỉ số (Metric)", "Chi tiết thông tin"],
+      ["Trạng thái hệ thống", "Không thể dựng ma trận tự động"],
+      ["Nguyên nhân lỗi", err.message]
+    ];
+    
+    res.json({
+      status: 'error',
+      rows: errorGrid.map(row => ({ values: row }))
+    });
   }
-});
 
 // HÀM QUAN TRỌNG: Tự động đo quét dữ liệu thực tế để vẽ lưới ma trận gửi sang Make
 async function generateLiveMatrixGrid(passedSpreadsheetId) {
