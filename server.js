@@ -334,12 +334,12 @@ app.post('/api/trigger-schedule', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
     }
 
-    console.log(`[Make Trigger] Đang tự động bóc tách dữ liệu ma trận động từ hệ thống...`);
+    console.log(`[Make Trigger] Đang tự động quét cấu trúc ma trận động thực tế...`);
 
-    // 2. Gọi hàm quét và xây dựng ma trận lưới 2 chiều từ dữ liệu thực tế
+    // 2. Gọi hàm tự động bóc tách dữ liệu từ file Google Sheet gốc của bạn
     const matrixGrid = await generateLiveMatrixGrid(req.body.spreadsheetId);
 
-    // 3. Trả thẳng mảng hai chiều phẳng về cho Make dán vào Google Sheet
+    // 3. Trả về mảng 2 chiều phẳng (Lưới) để Make dán thẳng vào Google Sheet của Agent 2
     res.json({
       status: 'success',
       values: matrixGrid
@@ -351,51 +351,56 @@ app.post('/api/trigger-schedule', async (req, res) => {
   }
 });
 
-// HÀM TỰ ĐỘNG PHÂN TÍCH VÀ ĐÓNG GÓI MA TRẬN PHẲNG (KHÔNG FIX CỨNG HÀNG/CỘT)
+// HÀM QUAN TRỌNG: Tự động đo quét dữ liệu thực tế để vẽ lưới ma trận gửi sang Make
 async function generateLiveMatrixGrid(passedSpreadsheetId) {
   const grid = [];
 
   try {
-    // Lấy Spreadsheet ID được cấu hình trong DB hoặc truyền từ Make sang
+    // Lấy Spreadsheet ID từ Make truyền sang hoặc lấy cấu hình lưu trong DB của bạn
     const config = await dbGet('config') || {};
-    const spreadsheetId = passedSpreadsheetId || config.spreadsheetId || '1your-default-spreadsheet-id-xyz'; 
+    const spreadsheetId = passedSpreadsheetId || config.spreadsheetId;
+    
+    if (!spreadsheetId) {
+      throw new Error("Chưa cấu hình Spreadsheet ID trong hệ thống hoặc không nhận được dữ liệu từ Make.");
+    }
 
-    // Đọc bảng dữ liệu Inflow thực tế đang chạy trên hệ thống của bạn thông qua readSheet
+    // Sử dụng chính hàm readSheet có sẵn của bạn để đọc tab 'Inflow'
     const rows = await readSheet(spreadsheetId, 'Inflow'); 
     
     if (!rows || rows.length === 0) {
-      throw new Error("Không lấy được dữ liệu hoặc sheet 'Inflow' trống.");
+      throw new Error("Không lấy được dữ liệu hoặc dữ liệu trống.");
     }
 
-    // A. TỰ ĐỘNG QUÉT CỘT: Lấy toàn bộ danh sách ngày thực tế xuất hiện trong data
+    // A. TỰ ĐỘNG BÓC CỘT: Lấy toàn bộ danh sách ngày thực tế (Không giới hạn số ngày)
     const dynamicDates = rows.map(r => (r.date || r.Date || '').trim()).filter(Boolean);
 
-    // B. TỰ ĐỘNG QUÉT CÁC CHỈ SỐ CƠ BẢN (Dòng Inflow, Total HC Order, %Task Coverage)
+    // B. TỰ ĐỘNG BÓC CÁC HÀNG CHỈ SỐ CƠ BẢN
+    const parseNum = v => parseFloat(String(v ?? '0').replace(',', '.')) || 0;
     const dynamicMetrics = [
-      { name: "Inflow", values: rows.map(r => parseFloat(String(r.inflow || r.Inflow || '0').replace(',', '.')) || 0) },
-      { name: "Total HC Order", values: rows.map(r => parseFloat(String(r.hc_order || r.hc || '0').replace(',', '.')) || 0) },
+      { name: "Inflow", values: rows.map(r => parseNum(r.inflow || r.Inflow)) },
+      { name: "Total HC Order", values: rows.map(r => parseNum(r.hc_order || r.hc)) },
       { name: "%Task Coverage (KF)", values: rows.map(r => r.coverage || r.Coverage || '0%') }
     ];
 
-    // C. TỰ ĐỘNG QUÉT HÀNG (CA KÍP): Tự động lọc ra toàn bộ các ca (S0*, S0, S1, S2, S3, S7...) phát sinh trong data
+    // C. TỰ ĐỘNG BÓC CÁC HÀNG CA KÍP (S0*, S0, S1, S2, S3, S7...)
+    // Tự quét tất cả các key ca kíp phát sinh từ thuật toán của bạn mà không cần khai báo cứng tên ca
     const sampleRow = rows[0] || {};
-    const shiftNames = Object.keys(sampleRow).filter(key => 
-      !['date', 'Date', 'inflow', 'Inflow', 'hc_order', 'hc', 'coverage', 'Coverage'].includes(key)
-    );
+    const excludedKeys = ['date', 'Date', 'inflow', 'Inflow', 'hc_order', 'hc', 'coverage', 'Coverage'];
+    const shiftNames = Object.keys(sampleRow).filter(key => !excludedKeys.includes(key));
 
-    // Đẩy từng hàng ca kíp động vào danh sách chỉ số
+    // Đẩy từng ca kíp tìm được vào danh sách hàng
     shiftNames.forEach(shift => {
       dynamicMetrics.push({
         name: shift,
-        values: rows.map(r => parseFloat(String(r[shift] || '0').replace(',', '.')) || 0)
+        values: rows.map(r => parseNum(r[shift]))
       });
     });
 
-    // D. TIẾN HÀNH ĐỔ DỮ LIỆU VÀO LƯỚI HAI CHIỀU GỬI SANG MAKE
-    // Hàng đầu tiên (Header): Cột Tiêu đề + Toàn bộ các ngày động
+    // D. TIẾN HÀNH ĐỔ VÀO LƯỚI HAI CHIỀU (MATRIX GRID)
+    // Hàng 1 luôn là Header: Tên cột Chỉ số + Toàn bộ các ngày động quét được
     grid.push(["Chỉ số (Metric)", ...dynamicDates]);
 
-    // Các hàng tiếp theo: Tên hàng + Toàn bộ mảng giá trị của hàng đó
+    // Các hàng tiếp theo: Tên hàng + Toàn bộ giá trị tương ứng của hàng đó
     dynamicMetrics.forEach(metric => {
       grid.push([metric.name, ...metric.values]);
     });
