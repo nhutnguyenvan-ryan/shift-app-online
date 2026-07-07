@@ -305,7 +305,7 @@ if (process.env.MAKE_WEBHOOK_URL) {
       body: JSON.stringify({
         event: 'schedule_completed',
         timestamp: new Date().toISOString(),
-        spreadsheetId: req.body.sheetUrlInflow || ''
+        spreadsheetId: parseSpreadsheetId(req.body.sheetUrlInflow || '') || ''
       })
     });
   } catch (e) { console.error('Make webhook notify error:', e.message); }
