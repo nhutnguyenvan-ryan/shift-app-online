@@ -820,34 +820,37 @@ function renderWorkMode(){
     <div class="kpi-card"><div class="kpi-label">WFH Rate</div><div class="kpi-value" style="color:#2563eb">${pctWfh.toFixed(1)}%</div><div class="kpi-sub">Over total weekly HC</div></div>
     <div class="kpi-card"><div class="kpi-label">Days with WFH</div><div class="kpi-value kv-neutral">${data.filter(d=>d.wfh>0).length}</div><div class="kpi-sub">/ ${data.length} days</div></div>`;
 
-  // Chart — destroy và reset canvas để tránh zombie instance
+  // Chart — destroy sạch trước khi tạo mới
   if(workChart){workChart.destroy();workChart=null;}
   const wmCanvas=document.getElementById('workModeChart');
-  wmCanvas.getContext('2d').clearRect(0,0,wmCanvas.width,wmCanvas.height);
-  workChart=new Chart(wmCanvas,{
+  // Reset canvas để tránh stale context
+  const wmParent=wmCanvas.parentNode;
+  const wmNew=document.createElement('canvas');
+  wmNew.id='workModeChart';
+  wmParent.replaceChild(wmNew,wmCanvas);
+
+  workChart=new Chart(wmNew,{
     type:'bar',
     data:{
-      labels:data.map(d=>`${d.dowLabel}\n${d.dateStr.slice(0,5)}`),
+      labels:data.map(d=>`${d.dowLabel} ${d.dateStr.slice(0,5)}`),
       datasets:[
-        {label:'WFH',data:data.map(d=>d.wfh),backgroundColor:'rgba(124,58,237,.7)',borderRadius:4,stack:'s'},
-        {label:'On-Floor',data:data.map(d=>d.floor),backgroundColor:'rgba(5,150,105,.65)',borderRadius:4,stack:'s'}
+        {label:'WFH',data:data.map(d=>d.wfh),backgroundColor:'rgba(124,58,237,.75)',borderRadius:3,stack:'s'},
+        {label:'On-Floor',data:data.map(d=>d.floor),backgroundColor:'rgba(5,150,105,.7)',borderRadius:3,stack:'s'}
       ]
     },
-    options:{responsive:true,maintainAspectRatio:false,
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
       plugins:{
-        legend:{labels:{font:{size:12},color:'#3d4766',boxWidth:14}},
-        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y} HC`}},
-        datalabels:{
-          display:(ctx)=>ctx.parsed.y>0,
-          color:'#fff',font:{size:9,weight:'700'},
-          anchor:'center',align:'center',
-          formatter:v=>v>0?v.toFixed(1):''
-        }
+        legend:{labels:{font:{size:12},color:'#3d4766',boxWidth:14,padding:16}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} HC`}},
+        datalabels:{display:false}
       },
       scales:{
-        x:{stacked:true,ticks:{color:'#7c84a3',font:{size:11}},grid:{display:false}},
+        x:{stacked:true,ticks:{color:'#7c84a3',font:{size:11},maxRotation:30},grid:{display:false}},
         y:{stacked:true,beginAtZero:true,ticks:{color:'#7c84a3'},grid:{color:'rgba(0,0,0,.05)'}}
-      }}
+      }
+    }
   });
 
   // Table chi tiết

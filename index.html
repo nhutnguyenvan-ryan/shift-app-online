@@ -150,8 +150,8 @@
         <div class="upload-card-header">
           <div class="upload-card-num">02</div>
           <div>
-            <div class="upload-card-title">%Enqueue Profile</div>
-            <div class="upload-card-sub">Hourly distribution per day <em>(optional)</em></div>
+            <div class="upload-card-title">%Hourly Task Enqueue</div>
+            <div class="upload-card-sub">Hourly task distribution per day <em>(optional)</em></div>
           </div>
           <button class="btn-template" onclick="downloadEnqueueTemplate()">⬇ Template</button>
         </div>
@@ -169,7 +169,7 @@
           <input type="file" id="file-enqueue" accept=".csv,.xlsx,.xls" onchange="handleFile(event,'enqueue')" style="display:none">
           <div class="drop-icon">📥</div>
           <div class="drop-text">Drop CSV / Excel here</div>
-          <div class="drop-sub">Columns: <code>date</code>, <code>h0</code>–<code>h23</code> (decimal)</div>
+          <div class="drop-sub">Columns: <code>date</code>, <code>h0</code>–<code>h23</code> (decimal, sum=1.0)</div>
         </div>
         <div id="status-enqueue" class="upload-status"></div>
         <div id="preview-enqueue" class="preview-wrap"></div>
