@@ -221,43 +221,6 @@ app.get('/api/fetch-sheet', async (req, res) => {
   }
 });
 
-// ── API: TRIGGER AUTO SCHEDULE (BÊ NGUYÊN XI MA TRẬN 100% ĐỘNG) ──────────────
-app.post('/api/trigger-schedule', async (req, res) => {
-  try {
-    const makeApiKey = req.headers['x-api-key'];
-    const expectedKey = process.env.MAKE_API_KEY || 'ShiftIQ_Make_Secret_2026_@';
-    
-    if (!makeApiKey || makeApiKey !== expectedKey) {
-      return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
-    }
-
-    // 1. Lấy dữ liệu thô từ thuật toán/giao diện web của bạn tại thời điểm đó
-    const rawWebTableData = await getActualWebTableData();
-
-    // 2. TỰ ĐỘNG CHUYỂN ĐỔI THÀNH MẢNG 2 CHIỀU (GRID)
-    const matrixGrid = [];
-
-    // Dòng đầu tiên: Tên cột + Toàn bộ các ngày đang hiển thị
-    const headerRow = ["Chỉ số (Metric)", ...rawWebTableData.dates];
-    matrixGrid.push(headerRow);
-
-    // Các dòng tiếp theo: Duyệt qua từng hàng chỉ số/ca kíp bất kỳ
-    rawWebTableData.metrics.forEach(m => {
-      const dataRow = [m.name, ...m.values];
-      matrixGrid.push(dataRow);
-    });
-
-    // 3. Trả về cấu trúc cực kỳ tối giản cho Make
-    res.json({
-      status: 'success',
-      values: matrixGrid // Đây là một mảng chứa các mảng con (Rows)
-    });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ── API: AI INSIGHT — via Groq API (OpenAI-compatible, free tier) ─────────────
 // Groq: https://console.groq.com — đăng ký miễn phí, lấy API key ngay
 // Model mặc định: llama3-8b-8192 (nhanh, miễn phí, không giới hạn egress)
@@ -360,10 +323,10 @@ app.delete('/api/users/editors/:email', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── API: TRIGGER AUTO SCHEDULE (MẢNG 2 CHIỀU ĐỘNG 100%) ──────────────────────
+// ── API: TRIGGER AUTO SCHEDULE (MẢNG 2 CHIỀU ĐỘNG 100% - CO GIÃN THEO DATA) ──
 app.post('/api/trigger-schedule', async (req, res) => {
   try {
-    // 1. Xác thực API Key bảo mật từ Make
+    // 1. Xác thực API Key bảo mật từ Make gửi sang
     const makeApiKey = req.headers['x-api-key'];
     const expectedKey = process.env.MAKE_API_KEY || 'ShiftIQ_Make_Secret_2026_@';
     
@@ -371,13 +334,12 @@ app.post('/api/trigger-schedule', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
     }
 
-    console.log(`[Make Trigger] Đang xử lý bóc tách ma trận bảng từ luồng dữ liệu...`);
+    console.log(`[Make Trigger] Đang tự động bóc tách dữ liệu ma trận động từ hệ thống...`);
 
-    // 2. LẤY DỮ LIỆU THỰC TẾ (Kết nối trực tiếp với kết quả thuật toán của bạn)
-    // Ở đây ta gọi hàm xử lý lấy cấu trúc từ luồng tính toán thực tế của hệ thống
+    // 2. Gọi hàm quét và xây dựng ma trận lưới 2 chiều từ dữ liệu thực tế
     const matrixGrid = await generateLiveMatrixGrid(req.body.spreadsheetId);
 
-    // 3. Trả thẳng mảng hai chiều về cho Make dán vào Google Sheet
+    // 3. Trả thẳng mảng hai chiều phẳng về cho Make dán vào Google Sheet
     res.json({
       status: 'success',
       values: matrixGrid
@@ -389,49 +351,67 @@ app.post('/api/trigger-schedule', async (req, res) => {
   }
 });
 
-// HÀM HỢP NHẤT: Quét qua toàn bộ dữ liệu thực tế và tự động xuất ra mảng hai chiều
+// HÀM TỰ ĐỘNG PHÂN TÍCH VÀ ĐÓNG GÓI MA TRẬN PHẲNG (KHÔNG FIX CỨNG HÀNG/CỘT)
 async function generateLiveMatrixGrid(passedSpreadsheetId) {
-  // Sử dụng Spreadsheet ID mặc định hoặc ID từ Make truyền sang nếu có
-  const spreadsheetId = passedSpreadsheetId || '1your-default-spreadsheet-id-xyz'; 
-  
-  let rows = [];
-  try {
-    // Gọi hàm đọc sheet có sẵn của bạn để lấy dữ liệu làm mồi tính toán ma trận
-    rows = await readSheet(spreadsheetId, 'Inflow'); 
-  } catch (e) {
-    console.log('Chưa đọc được sheet, sử dụng dữ liệu mẫu tự động sinh theo thuật toán');
-  }
-
-  // --- LOGIC TỰ ĐỘNG ĐO QUÉT VÀ DỰNG GRID (Bất tử trước mọi số dòng/cột) ---
-  // Giả sử thuật toán của bạn sinh ra các ngày và các ca kíp linh hoạt như sau:
-  const dynamicDates = ["29.06.2026", "30.06.2026", "01.07.2026", "02.07.2026", "03.07.2026", "04.07.2026", "05.07.2026"];
-  
-  const dynamicMetrics = [
-    { name: "Inflow", values: [80711, 80711, 80711, 80711, 80711, 75774, 78975] },
-    { name: "Total HC Order", values: [9.0, 9.0, 9.0, 9.0, 9.0, 8.0, 8.5] },
-    { name: "%Task Coverage (KF)", values: ["94.6%", "94.6%", "94.6%", "94.6%", "94.6%", "92.2%", "92.8%"] },
-    { name: "S0*", values: [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0] },
-    { name: "S0", values: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] },
-    { name: "S1", values: [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0] },
-    { name: "S2", values: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] },
-    { name: "S3", values: [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0] },
-    { name: "S7", values: [1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 1.0] }
-  ];
-
-  // Tiến hành dựng lưới (Lưới này tuần sau có bao nhiêu dòng/cột nó sẽ tự phình ra bấy nhiêu)
   const grid = [];
-  
-  // Hàng đầu tiên (Header ngày tháng)
-  grid.push(["Chỉ số (Metric)", ...dynamicDates]);
 
-  // Các hàng dữ liệu ca kíp tiếp theo
-  dynamicMetrics.forEach(metric => {
-    grid.push([metric.name, ...metric.values]);
-  });
+  try {
+    // Lấy Spreadsheet ID được cấu hình trong DB hoặc truyền từ Make sang
+    const config = await dbGet('config') || {};
+    const spreadsheetId = passedSpreadsheetId || config.spreadsheetId || '1your-default-spreadsheet-id-xyz'; 
+
+    // Đọc bảng dữ liệu Inflow thực tế đang chạy trên hệ thống của bạn thông qua readSheet
+    const rows = await readSheet(spreadsheetId, 'Inflow'); 
+    
+    if (!rows || rows.length === 0) {
+      throw new Error("Không lấy được dữ liệu hoặc sheet 'Inflow' trống.");
+    }
+
+    // A. TỰ ĐỘNG QUÉT CỘT: Lấy toàn bộ danh sách ngày thực tế xuất hiện trong data
+    const dynamicDates = rows.map(r => (r.date || r.Date || '').trim()).filter(Boolean);
+
+    // B. TỰ ĐỘNG QUÉT CÁC CHỈ SỐ CƠ BẢN (Dòng Inflow, Total HC Order, %Task Coverage)
+    const dynamicMetrics = [
+      { name: "Inflow", values: rows.map(r => parseFloat(String(r.inflow || r.Inflow || '0').replace(',', '.')) || 0) },
+      { name: "Total HC Order", values: rows.map(r => parseFloat(String(r.hc_order || r.hc || '0').replace(',', '.')) || 0) },
+      { name: "%Task Coverage (KF)", values: rows.map(r => r.coverage || r.Coverage || '0%') }
+    ];
+
+    // C. TỰ ĐỘNG QUÉT HÀNG (CA KÍP): Tự động lọc ra toàn bộ các ca (S0*, S0, S1, S2, S3, S7...) phát sinh trong data
+    const sampleRow = rows[0] || {};
+    const shiftNames = Object.keys(sampleRow).filter(key => 
+      !['date', 'Date', 'inflow', 'Inflow', 'hc_order', 'hc', 'coverage', 'Coverage'].includes(key)
+    );
+
+    // Đẩy từng hàng ca kíp động vào danh sách chỉ số
+    shiftNames.forEach(shift => {
+      dynamicMetrics.push({
+        name: shift,
+        values: rows.map(r => parseFloat(String(r[shift] || '0').replace(',', '.')) || 0)
+      });
+    });
+
+    // D. TIẾN HÀNH ĐỔ DỮ LIỆU VÀO LƯỚI HAI CHIỀU GỬI SANG MAKE
+    // Hàng đầu tiên (Header): Cột Tiêu đề + Toàn bộ các ngày động
+    grid.push(["Chỉ số (Metric)", ...dynamicDates]);
+
+    // Các hàng tiếp theo: Tên hàng + Toàn bộ mảng giá trị của hàng đó
+    dynamicMetrics.forEach(metric => {
+      grid.push([metric.name, ...metric.values]);
+    });
+
+  } catch (error) {
+    console.error("Lỗi bóc tách ma trận tự động:", error.message);
+    // Trả về log lỗi dạng bảng nếu có trục trặc để không làm sập flow Make (Fallback an toàn)
+    return [
+      ["Chỉ số (Metric)", "Chi tiết lỗi từ Server"],
+      ["Status", "Không thể dựng ma trận tự động"],
+      ["Reason", error.message]
+    ];
+  }
 
   return grid;
 }
-
 // ── STATIC ────────────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
