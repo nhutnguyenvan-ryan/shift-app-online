@@ -221,6 +221,63 @@ app.get('/api/fetch-sheet', async (req, res) => {
   }
 });
 
+// ── API: TRIGGER AUTO SCHEDULE FOR MAKE ───────────────────────────────────────
+// POST /api/trigger-schedule
+app.post('/api/trigger-schedule', async (req, res) => {
+  try {
+    // 1. Kiểm tra API Key bảo mật để chỉ cho phép Make gọi vào
+    const makeApiKey = req.headers['x-api-key'];
+    const expectedKey = process.env.MAKE_API_KEY || 'ShiftIQ_Make_Secret_2026_@';
+    
+    if (!makeApiKey || makeApiKey !== expectedKey) {
+      return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
+    }
+
+    console.log(`[Make Trigger] Đang chạy thuật toán bóc tách dữ liệu ma trận tuần...`);
+
+    // 2. GỌI LOGIC TÍNH TOÁN VÀ FORMAT DỮ LIỆU ĐỘNG THEO THỨ
+    // (Hàm này mô phỏng việc lấy dữ liệu từ bảng của bạn và biến đổi thành các Key cố định mon, tue, wed...)
+    const dynamicMatrixData = await getDynamicScheduleMatrix();
+
+    // 3. Trả kết quả về cho Make hứng dưới dạng JSON
+    res.json({
+      status: 'success',
+      generated_at: new Date().toISOString(),
+      data: dynamicMatrixData
+    });
+
+  } catch (err) {
+    console.error('Trigger schedule error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Hàm helper để tạo cấu trúc ma trận động theo thứ (MON, TUE, WED...)
+async function getDynamicScheduleMatrix() {
+  // Thực tế ở đây bạn sẽ lấy data từ database hoặc từ hàm tối ưu xếp lịch của bạn
+  // Sau đó dùng code JS để map các ngày thực tế vào các thứ cố định.
+  
+  // Dưới đây là dữ liệu mẫu sau khi được code của bạn xử lý tự động:
+  return [
+    {
+      "metric": "DATE", 
+      "mon": "29.06.2026", "tue": "30.06.2026", "wed": "01.07.2026", "thu": "02.07.2026", "fri": "03.07.2026", "sat": "04.07.2026", "sun": "05.07.2026"
+    },
+    {
+      "metric": "Inflow",
+      "mon": 80711, "tue": 80711, "wed": 80711, "thu": 80711, "fri": 80711, "sat": 75774, "sun": 78975
+    },
+    {
+      "metric": "Total HC Order",
+      "mon": 9.0, "tue": 9.0, "wed": 9.0, "thu": 9.0, "fri": 9.0, "sat": 8.0, "sun": 8.5
+    },
+    {
+      "metric": "S0*",
+      "mon": 2.0, "tue": 2.0, "wed": 2.0, "thu": 2.0, "fri": 2.0, "sat": 2.0, "sun": 2.0
+    }
+  ];
+}
+
 // ── API: AI INSIGHT — via Groq API (OpenAI-compatible, free tier) ─────────────
 // Groq: https://console.groq.com — đăng ký miễn phí, lấy API key ngay
 // Model mặc định: llama3-8b-8192 (nhanh, miễn phí, không giới hạn egress)
