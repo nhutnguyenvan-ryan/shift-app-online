@@ -295,6 +295,21 @@ app.post('/api/config', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   if (await getRole(req.user.email) === 'viewer') return res.status(403).json({ error: 'Forbidden' });
   await dbSet('config', req.body);
+  // Gửi tín hiệu tới Make.com sau khi lưu config thành công
+if (process.env.MAKE_WEBHOOK_URL) {
+  try {
+    const { default: fetch } = await import('node-fetch');
+    await fetch(process.env.MAKE_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'schedule_completed',
+        timestamp: new Date().toISOString(),
+        spreadsheetId: req.body.sheetUrlInflow || ''
+      })
+    });
+  } catch (e) { console.error('Make webhook notify error:', e.message); }
+}
   res.json({ ok: true });
 });
 
