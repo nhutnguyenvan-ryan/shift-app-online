@@ -333,25 +333,21 @@ app.post('/api/trigger-schedule', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
     }
 
-    // Lấy ma trận mảng 2 chiều động từ hàm bóc tách của bạn
+    // Lấy ma trận mảng 2 chiều thuần túy [ [hàng 1], [hàng 2] ]
     const matrixGrid = await generateLiveMatrixGrid(req.body.spreadsheetId);
 
-    // CHỈNH SỬA TẠI ĐÂY: Trả về chuỗi JSON mảng 2 chiều nguyên bản
+    // TRẢ VỀ DẠNG NÀY: Để Make tự động parse thẳng thành mảng sạch
     res.json({
       status: 'success',
-      matrixData: JSON.stringify(matrixGrid)
+      values: matrixGrid
     });
 
   } catch (err) {
     console.error('Trigger error:', err.message);
-    // Trả về mảng thông báo lỗi chuẩn cấu trúc ma trận
-    const errorGrid = [["Lỗi hệ thống", err.message]];
-    res.json({
-      status: 'error',
-      matrixData: JSON.stringify(errorGrid)
-    });
+    res.status(500).json({ error: err.message });
   }
 });
+
 // HÀM QUAN TRỌNG: Tự động đo quét dữ liệu thực tế để vẽ lưới ma trận gửi sang Make
 async function generateLiveMatrixGrid(passedSpreadsheetId) {
   const grid = [];
