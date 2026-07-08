@@ -376,7 +376,14 @@ async function generateLiveMatrixGrid(passedSpreadsheetId) {
     // Lấy Spreadsheet ID từ Make truyền sang hoặc lấy cấu hình lưu trong DB của bạn
     const config = await dbGet('config') || {};
     const spreadsheetId = passedSpreadsheetId || config.spreadsheetId;
-    
+    async function generateScheduleRows() {
+  const config = await dbGet('config') || {};
+  const rows = config.shiftExportRows;
+  if (!rows || !rows.length) {
+    throw new Error('Chưa có dữ liệu Shift Breakdown. Vui lòng chạy Run Optimizer và bấm Save trên ShiftIQ trước khi export.');
+  }
+  return rows;
+}
     if (!spreadsheetId) {
       throw new Error("Chưa cấu hình Spreadsheet ID trong hệ thống hoặc không nhận được dữ liệu từ Make.");
     }
