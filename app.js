@@ -91,9 +91,34 @@ function setEventTarget(ev,val){
 function toggleSpecialTargets(){
   document.getElementById('specialTargetPanel').classList.toggle('hidden');
 }
-
+// Trích xuất dữ liệu đúng theo bảng "Optimized HC Order by Day — Breakdown by Shift"
+function buildShiftExportRows() {
+  if (!weekData.length) return [];
+  const rows = [];
+  weekData.forEach(wd => {
+    const e = getEff(wd.d);
+    ALL_SHIFTS.forEach(s => {
+      const count = e.shiftCounts[s.name] || 0;
+      if (count <= 0) return; // chỉ export ca có nhân sự phân bổ, khớp với bảng hiển thị (ẩn hàng rỗng)
+      rows.push({
+        date: wd.dateStr,
+        dow: wd.dowLabel,
+        event: wd.event,
+        inflow: Math.round(e.totalInflow),
+        total_hc_order: +e.weightedHC.toFixed(1),
+        coverage_pct: +(e.coverage_pct * 100).toFixed(1),
+        shift_name: s.name,
+        shift_type: s.cost === 1 ? 'F' : 'P',
+        shift_count: count
+      });
+    });
+  });
+  return rows;
+}
 // ── CONFIG SAVE / LOAD ────────────────────────────────────────────────────────
 async function saveConfig() {
+  const shiftExportRows = buildShiftExportRows();
+
   const config = {
     aht: document.getElementById('ahtInput').value,
     util: document.getElementById('utilInput').value,
@@ -101,7 +126,8 @@ async function saveConfig() {
     eventTargets: EVENT_TARGETS,
     inflowData, enqueueData,
     sheetUrlInflow: window._sheetUrlInflow||'',
-    sheetUrlEnqueue: window._sheetUrlEnqueue||''
+    sheetUrlEnqueue: window._sheetUrlEnqueue||'',
+    shiftExportRows // ← dữ liệu chi tiết theo ca, dùng để export sang Google Sheets
   };
   await fetch('/api/config', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
