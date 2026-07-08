@@ -376,14 +376,6 @@ async function generateLiveMatrixGrid(passedSpreadsheetId) {
     // Lấy Spreadsheet ID từ Make truyền sang hoặc lấy cấu hình lưu trong DB của bạn
     const config = await dbGet('config') || {};
     const spreadsheetId = passedSpreadsheetId || config.spreadsheetId;
-    async function generateScheduleRows() {
-  const config = await dbGet('config') || {};
-  const rows = config.shiftExportRows;
-  if (!rows || !rows.length) {
-    throw new Error('Chưa có dữ liệu Shift Breakdown. Vui lòng chạy Run Optimizer và bấm Save trên ShiftIQ trước khi export.');
-  }
-  return rows;
-}
     if (!spreadsheetId) {
       throw new Error("Chưa cấu hình Spreadsheet ID trong hệ thống hoặc không nhận được dữ liệu từ Make.");
     }
@@ -441,6 +433,32 @@ async function generateLiveMatrixGrid(passedSpreadsheetId) {
 
   return grid;
 }
+
+// ── API: EXPORT SHIFT BREAKDOWN ROWS (dùng cho Agent 2 trên Make) ────────────
+async function generateScheduleRows() {
+  const config = await dbGet('config') || {};
+  const rows = config.shiftExportRows;
+  if (!rows || !rows.length) {
+    throw new Error('Chưa có dữ liệu Shift Breakdown. Vui lòng chạy Run Optimizer và bấm Save trên ShiftIQ trước khi export.');
+  }
+  return rows;
+}
+
+app.post('/api/schedule-rows', async (req, res) => {
+  try {
+    const apiKey = req.headers['x-api-key'];
+    const expectedKey = process.env.MAKE_API_KEY || 'ShiftIQ_Make_Secret_2026_@';
+    if (!apiKey || apiKey !== expectedKey) {
+      return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
+    }
+    const rows = await generateScheduleRows();
+    res.json({ rows });
+  } catch (err) {
+    console.error('schedule-rows error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── STATIC ────────────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
