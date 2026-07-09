@@ -229,7 +229,8 @@
       <div class="fg"><label>Select Day (chart reference)</label>
         <select id="shiftDaySelect" onchange="renderShiftBreakdown()" class="day-select"></select>
       </div>
-      <button class="btn-outline" onclick="resetShift()">↺ Reset to Optimal</button>
+      <button class="btn-outline" onclick="resetShift()">🔄Reset to Optimal</button
+      <button class="btn-run" id="exportBtn" onclick="exportShiftData()"> 📤Export to Sheet</button>                                                                   
     </div>
     <div class="kpi-grid" id="shiftMetrics"></div>
     <div class="info-bar" id="shiftInfo"></div>
@@ -309,6 +310,19 @@
     if(typeof ChartDataLabels!=="undefined") Chart.register(ChartDataLabels);
   });
 </script>
+<!-- ── EXPORT RESULT MODAL ── -->
+<div id="exportModal" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeExportModal()"></div>
+  <div class="modal-box" style="width:420px">
+    <div class="modal-header">
+      <span class="modal-title" id="exportModalTitle">Export</span>
+      <button class="modal-close" onclick="closeExportModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="exportModalBody" style="font-size:13px;line-height:1.7"></div>
+    </div>
+  </div>
+</div>
 <script src="/app.js"></script>
 </body>
 </html>
