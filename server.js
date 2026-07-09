@@ -229,7 +229,27 @@ async function appendSheetRows(spreadsheetId, sheetName, rows) {
   );
   const appendData = await appendResp.json();
   if (appendData.error) throw new Error(`Sheets API (append): ${appendData.error.message}`);
-  return appendData;
+
+  // Lấy gid (sheetId nội bộ) của tab đích để dựng link mở đúng tab + đúng vùng vừa ghi
+  let sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+  try {
+    const metaResp = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(sheetId,title)`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const metaData = await metaResp.json();
+    const sheetMeta = (metaData.sheets || []).find(s => s.properties?.title === sheetName);
+    const gid = sheetMeta?.properties?.sheetId;
+    const updatedRange = appendData.updates?.updatedRange || '';
+    const a1 = updatedRange.includes('!') ? updatedRange.split('!')[1] : '';
+    if (gid !== undefined) {
+      sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${gid}` + (a1 ? `&range=${a1}` : '');
+    }
+  } catch (e) {
+    console.error('Không lấy được gid tab, dùng link mặc định:', e.message);
+  }
+
+  return { ...appendData, sheetUrl };
 }
 
 // ── API: FETCH SHEET (Service Account) ───────────────────────────────────────
@@ -301,7 +321,8 @@ app.post('/api/export-shift', async (req, res) => {
     res.json({
       ok: true,
       appended: rows.length,
-      updatedRange: result.updates?.updatedRange || ''
+      updatedRange: result.updates?.updatedRange || '',
+      sheetUrl: result.sheetUrl
     });
   } catch (err) {
     console.error('export-shift error:', err.message);
