@@ -135,9 +135,20 @@ async function exportShiftData() {
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+
+    const linkHtml = data.sheetUrl
+      ? `<a href="${data.sheetUrl}" target="_blank" rel="noopener"
+           style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;
+                  padding:8px 14px;background:var(--blue-lt);color:var(--blue);
+                  border:1.5px solid var(--blue-md);border-radius:var(--radius-xs);
+                  font-weight:600;font-size:12px;text-decoration:none">
+           📄 Mở Google Sheet vừa export ↗
+         </a>`
+      : '';
+
     showExportModal(
       '✅ Export thành công',
-      `Đã ghi thêm <strong>${data.appended}</strong> dòng vào Google Sheet.${data.updatedRange ? `<br><span style="font-size:11px;color:var(--text3)">Range: ${data.updatedRange}</span>` : ''}`,
+      `Đã ghi thêm <strong>${data.appended}</strong> dòng vào Google Sheet.${data.updatedRange ? `<br><span style="font-size:11px;color:var(--text3)">Range: ${data.updatedRange}</span>` : ''}${linkHtml}`,
       false
     );
   } catch (err) {
@@ -146,7 +157,6 @@ async function exportShiftData() {
     btn.disabled = false; btn.textContent = oldTxt;
   }
 }
-
 function showExportModal(title, msgHtml, isError) {
   document.getElementById('exportModalTitle').textContent = title;
   const body = document.getElementById('exportModalBody');
