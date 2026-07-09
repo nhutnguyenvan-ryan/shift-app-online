@@ -463,10 +463,14 @@ body {
   height: 37px; padding: 0 12px;
   background: var(--surface); border: 1.5px solid var(--border2);
   border-radius: var(--radius-xs); color: var(--text);
+  font-family: 'Times New Roman', Times, serif;
   font-size: 13px; font-weight: 500; outline: none; cursor: pointer;
   min-width: 220px; transition: border-color .15s;
 }
 .day-select:focus { border-color: var(--blue) }
+.day-select option {
+  font-family: 'Times New Roman', Times, serif;
+}
 
 /* ── HC INPUT ── */
 .hc-input {
