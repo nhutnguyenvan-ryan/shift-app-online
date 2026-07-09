@@ -110,7 +110,9 @@ async function getRole(email) {
 
 // ── GOOGLE SHEETS API via Service Account ─────────────────────────────────────
 // Tạo JWT access token từ Service Account key (không cần thư viện nặng)
-async function getServiceAccountToken() {
+// scope: truyền 'https://www.googleapis.com/auth/spreadsheets' khi cần GHI (append/update),
+//        mặc định 'spreadsheets.readonly' khi chỉ cần ĐỌC.
+async function getServiceAccountToken(scope) {
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   if (!keyJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY chưa được set trong Environment Variables');
 
@@ -121,7 +123,7 @@ async function getServiceAccountToken() {
   const now   = Math.floor(Date.now() / 1000);
   const claim = {
     iss:   key.client_email,
-    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+    scope: scope || 'https://www.googleapis.com/auth/spreadsheets.readonly',
     aud:   'https://oauth2.googleapis.com/token',
     iat:   now,
     exp:   now + 3600
@@ -157,7 +159,7 @@ async function getServiceAccountToken() {
 
 // Đọc 1 sheet từ Spreadsheet ID + tên tab, trả về mảng rows [{col:val,...}]
 async function readSheet(spreadsheetId, sheetName) {
-  const token = await getServiceAccountToken();
+  const token = await getServiceAccountToken('https://www.googleapis.com/auth/spreadsheets.readonly');
   const { default: fetch } = await import('node-fetch');
   const range = encodeURIComponent(`${sheetName}!A:Z`);
   const url   = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
@@ -175,6 +177,59 @@ function parseSpreadsheetId(urlOrId) {
   if (m) return m[1];
   if (/^[a-zA-Z0-9_-]{20,}$/.test(urlOrId.trim())) return urlOrId.trim();
   return null;
+}
+
+// ── APPEND ROWS vào Google Sheet (giữ nguyên format cột hiện có) ─────────────
+// 1. Đọc dòng header (row 1) của tab đích để biết đúng thứ tự & tên cột đang có sẵn.
+// 2. Map từng object trong `rows` (theo key của buildShiftExportRows() bên app.js)
+//    vào đúng cột tương ứng theo tên header (không phân biệt hoa/thường, khoảng trắng).
+// 3. Gọi values:append với insertDataOption=INSERT_ROWS → chỉ thêm dòng mới bên dưới,
+//    không ghi đè, không phá format (number format) đã áp theo cột.
+async function appendSheetRows(spreadsheetId, sheetName, rows) {
+  const token = await getServiceAccountToken('https://www.googleapis.com/auth/spreadsheets');
+  const { default: fetch } = await import('node-fetch');
+
+  const headerRange = encodeURIComponent(`${sheetName}!1:1`);
+  const headerResp = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${headerRange}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const headerData = await headerResp.json();
+  if (headerData.error) throw new Error(`Sheets API (đọc header): ${headerData.error.message}`);
+  const headers = (headerData.values && headerData.values[0]) || [];
+  if (!headers.length) {
+    throw new Error(`Không tìm thấy dòng header trên tab "${sheetName}". Vui lòng kiểm tra lại EXPORT_SHEET_NAME.`);
+  }
+
+  const norm = s => String(s || '').trim().toLowerCase().replace(/[\s_]+/g, '');
+  const keyMap = {
+    date: 'date', dow: 'dow', event: 'event', inflow: 'inflow',
+    totalhcorder: 'total_hc_order',
+    coveragepct: 'coverage_pct',
+    shiftname: 'shift_name',
+    shifttype: 'shift_type',
+    shiftcount: 'shift_count'
+  };
+
+  const values = rows.map(r => headers.map(h => {
+    const key = keyMap[norm(h)];
+    if (!key) return '';
+    const v = r[key];
+    return (v === undefined || v === null) ? '' : v;
+  }));
+
+  const appendRange = encodeURIComponent(`${sheetName}!A:A`);
+  const appendResp = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${appendRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values })
+    }
+  );
+  const appendData = await appendResp.json();
+  if (appendData.error) throw new Error(`Sheets API (append): ${appendData.error.message}`);
+  return appendData;
 }
 
 // ── API: FETCH SHEET (Service Account) ───────────────────────────────────────
@@ -217,6 +272,39 @@ app.get('/api/fetch-sheet', async (req, res) => {
     }
   } catch (err) {
     console.error('fetch-sheet error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── API: EXPORT SHIFT BREAKDOWN → Google Sheet (Append) ───────────────────────
+// POST /api/export-shift  body: { rows: [...] }  (rows lấy từ buildShiftExportRows() phía app.js)
+// Ghi APPEND vào đúng Spreadsheet ID + Tab của Agent 2, theo đúng thứ tự cột header hiện có.
+app.post('/api/export-shift', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  if (await getRole(req.user.email) === 'viewer') return res.status(403).json({ error: 'Forbidden' });
+
+  try {
+    const rows = req.body.rows;
+    if (!Array.isArray(rows) || !rows.length) {
+      return res.status(400).json({ error: 'Không có dữ liệu để export. Vui lòng chạy Run Optimizer trước.' });
+    }
+
+    const spreadsheetId = process.env.EXPORT_SPREADSHEET_ID;
+    const sheetName      = process.env.EXPORT_SHEET_NAME || 'Shift Breakdown';
+    if (!spreadsheetId) {
+      return res.status(500).json({ error: 'Chưa cấu hình EXPORT_SPREADSHEET_ID trong Environment Variables trên Render.' });
+    }
+
+    console.log(`export-shift | rows:${rows.length} sheet:${sheetName} id:${spreadsheetId}`);
+    const result = await appendSheetRows(spreadsheetId, sheetName, rows);
+
+    res.json({
+      ok: true,
+      appended: rows.length,
+      updatedRange: result.updates?.updatedRange || ''
+    });
+  } catch (err) {
+    console.error('export-shift error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -376,6 +464,14 @@ async function generateLiveMatrixGrid(passedSpreadsheetId) {
     // Lấy Spreadsheet ID từ Make truyền sang hoặc lấy cấu hình lưu trong DB của bạn
     const config = await dbGet('config') || {};
     const spreadsheetId = passedSpreadsheetId || config.spreadsheetId;
+    async function generateScheduleRows() {
+  const config = await dbGet('config') || {};
+  const rows = config.shiftExportRows;
+  if (!rows || !rows.length) {
+    throw new Error('Chưa có dữ liệu Shift Breakdown. Vui lòng chạy Run Optimizer và bấm Save trên ShiftIQ trước khi export.');
+  }
+  return rows;
+}
     if (!spreadsheetId) {
       throw new Error("Chưa cấu hình Spreadsheet ID trong hệ thống hoặc không nhận được dữ liệu từ Make.");
     }
@@ -433,32 +529,6 @@ async function generateLiveMatrixGrid(passedSpreadsheetId) {
 
   return grid;
 }
-
-// ── API: EXPORT SHIFT BREAKDOWN ROWS (dùng cho Agent 2 trên Make) ────────────
-async function generateScheduleRows() {
-  const config = await dbGet('config') || {};
-  const rows = config.shiftExportRows;
-  if (!rows || !rows.length) {
-    throw new Error('Chưa có dữ liệu Shift Breakdown. Vui lòng chạy Run Optimizer và bấm Save trên ShiftIQ trước khi export.');
-  }
-  return rows;
-}
-
-app.post('/api/schedule-rows', async (req, res) => {
-  try {
-    const apiKey = req.headers['x-api-key'];
-    const expectedKey = process.env.MAKE_API_KEY || 'ShiftIQ_Make_Secret_2026_@';
-    if (!apiKey || apiKey !== expectedKey) {
-      return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
-    }
-    const rows = await generateScheduleRows();
-    res.json({ rows });
-  } catch (err) {
-    console.error('schedule-rows error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ── STATIC ────────────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
