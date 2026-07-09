@@ -50,6 +50,7 @@ function applyRole() {
   const inputs = document.querySelectorAll('.param-bar input, .hc-input, #newEditorEmail, #specialTargetGrid input');
   inputs.forEach(el => el.disabled = !canEdit);
   document.getElementById('runBtn').disabled = !canEdit;
+  document.getElementById('exportBtn').disabled = !canEdit;
   document.getElementById('saveBtn').classList.toggle('hidden', !canEdit);
 
   // Hide upload actions for viewers
@@ -114,6 +115,47 @@ function buildShiftExportRows() {
     });
   });
   return rows;
+}
+
+// ── EXPORT SHIFT DATA → Google Sheet (Append, giữ nguyên Sheet của Agent 2) ──
+async function exportShiftData() {
+  if (!weekData.length) {
+    showExportModal('⚠ Chưa có dữ liệu', 'Vui lòng chạy Run Optimizer trước khi export.', true);
+    return;
+  }
+  const btn = document.getElementById('exportBtn');
+  const oldTxt = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Exporting...';
+  try {
+    const rows = buildShiftExportRows();
+    if (!rows.length) throw new Error('Không có dòng dữ liệu ca nào có nhân sự để export.');
+    const res = await fetch('/api/export-shift', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    showExportModal(
+      '✅ Export thành công',
+      `Đã ghi thêm <strong>${data.appended}</strong> dòng vào Google Sheet.${data.updatedRange ? `<br><span style="font-size:11px;color:var(--text3)">Range: ${data.updatedRange}</span>` : ''}`,
+      false
+    );
+  } catch (err) {
+    showExportModal('❌ Export thất bại', err.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = oldTxt;
+  }
+}
+
+function showExportModal(title, msgHtml, isError) {
+  document.getElementById('exportModalTitle').textContent = title;
+  const body = document.getElementById('exportModalBody');
+  body.innerHTML = msgHtml;
+  body.style.color = isError ? 'var(--danger)' : 'var(--text2)';
+  document.getElementById('exportModal').classList.remove('hidden');
+}
+function closeExportModal() {
+  document.getElementById('exportModal').classList.add('hidden');
 }
 // ── CONFIG SAVE / LOAD ────────────────────────────────────────────────────────
 async function saveConfig() {
