@@ -129,20 +129,17 @@ async function getServiceAccountToken(scope) {
     exp:   now + 3600
   };
 
-  // Tạo JWT bằng crypto (built-in Node.js, không cần thư viện)
   const crypto = require('crypto');
   const header  = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
   const payload = Buffer.from(JSON.stringify(claim)).toString('base64url');
   const toSign  = `${header}.${payload}`;
 
-  // Private key từ service account JSON
   const privateKey = key.private_key;
   const sign = crypto.createSign('RSA-SHA256');
   sign.update(toSign);
   const signature = sign.sign(privateKey, 'base64url');
   const jwt = `${toSign}.${signature}`;
 
-  // Đổi JWT → access token
   const { default: fetch } = await import('node-fetch');
   const resp = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -157,7 +154,7 @@ async function getServiceAccountToken(scope) {
   return data.access_token;
 }
 
-// Đọc 1 sheet từ Spreadsheet ID + tên tab, trả về mảng rows [{col:val,...}]
+// Đọc 1 sheet dạng long-format (header row + data rows), trả về mảng object
 async function readSheet(spreadsheetId, sheetName) {
   const token = await getServiceAccountToken('https://www.googleapis.com/auth/spreadsheets.readonly');
   const { default: fetch } = await import('node-fetch');
@@ -171,6 +168,44 @@ async function readSheet(spreadsheetId, sheetName) {
   return rows.map(r => Object.fromEntries(headers.map((h, i) => [h.trim(), r[i] ?? ''])));
 }
 
+// ── ĐỌC TAB "Historical Data" (dạng WIDE — mỗi cột = 1 ngày quá khứ) ─────────
+// Cấu trúc cố định trong Sheet:
+//   Row1 = Event, Row2 = Dow, Row3 = Date, Row4 = (trống), Row5..Row28 = h0..h23
+//   Cột A = nhãn hàng, Cột B trở đi = từng ngày lịch sử
+async function readHistoricalWide(spreadsheetId, sheetName) {
+  const token = await getServiceAccountToken('https://www.googleapis.com/auth/spreadsheets.readonly');
+  const { default: fetch } = await import('node-fetch');
+  const range = encodeURIComponent(`${sheetName}!A1:CZ28`);
+  const url   = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+  const resp  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const data  = await resp.json();
+  if (data.error) throw new Error(`Sheets API: ${data.error.message}`);
+
+  const values = data.values || [];
+  if (values.length < 5) return [];
+
+  const eventRow = values[0] || [];
+  const dowRow   = values[1] || [];
+  const dateRow  = values[2] || [];
+  const hourRows = values.slice(4); // Row5 (h0) trở đi
+
+  const parseNum = v => parseFloat(String(v ?? '0').replace(',', '.')) || 0;
+  const numCols = Math.max(eventRow.length, dowRow.length, dateRow.length) - 1; // trừ cột A
+
+  const columns = [];
+  for (let i = 1; i <= numCols; i++) {
+    const dateStr = (dateRow[i] || '').trim();
+    if (!dateStr) continue;
+    columns.push({
+      event:  (eventRow[i] || '').trim(),
+      dow:    (dowRow[i]   || '').trim(),
+      date:   dateStr,
+      hourly: hourRows.map(r => parseNum(r[i]))
+    });
+  }
+  return columns;
+}
+
 // Parse Spreadsheet ID từ URL hoặc raw ID
 function parseSpreadsheetId(urlOrId) {
   const m = urlOrId.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
@@ -179,12 +214,7 @@ function parseSpreadsheetId(urlOrId) {
   return null;
 }
 
-// ── APPEND ROWS vào Google Sheet (giữ nguyên format cột hiện có) ─────────────
-// 1. Đọc dòng header (row 1) của tab đích để biết đúng thứ tự & tên cột đang có sẵn.
-// 2. Map từng object trong `rows` (theo key của buildShiftExportRows() bên app.js)
-//    vào đúng cột tương ứng theo tên header (không phân biệt hoa/thường, khoảng trắng).
-// 3. Gọi values:append với insertDataOption=INSERT_ROWS → chỉ thêm dòng mới bên dưới,
-//    không ghi đè, không phá format (number format) đã áp theo cột.
+// ── APPEND ROWS vào cột A:I của Google Sheet (giữ nguyên format cột hiện có) ─
 async function appendSheetRows(spreadsheetId, sheetName, rows) {
   const token = await getServiceAccountToken('https://www.googleapis.com/auth/spreadsheets');
   const { default: fetch } = await import('node-fetch');
@@ -230,7 +260,6 @@ async function appendSheetRows(spreadsheetId, sheetName, rows) {
   const appendData = await appendResp.json();
   if (appendData.error) throw new Error(`Sheets API (append): ${appendData.error.message}`);
 
-  // Lấy gid (sheetId nội bộ) của tab đích để dựng link mở đúng tab + đúng vùng vừa ghi
   let sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
   try {
     const metaResp = await fetch(
@@ -252,12 +281,33 @@ async function appendSheetRows(spreadsheetId, sheetName, rows) {
   return { ...appendData, sheetUrl };
 }
 
+// ── APPEND cảnh báo Abandon vào cột K:M của CÙNG tab (không đụng cột A:I) ────
+// Header K1:M1 (Date | Hour | %Abandon) đã có sẵn trong Sheet — chỉ append dòng bên dưới.
+async function appendAbandonWarnings(spreadsheetId, sheetName, rows) {
+  if (!rows || !rows.length) return null;
+  const token = await getServiceAccountToken('https://www.googleapis.com/auth/spreadsheets');
+  const { default: fetch } = await import('node-fetch');
+
+  const values = rows.map(r => [r.date, r.hour, r.abandon_pct]);
+
+  const appendRange = encodeURIComponent(`${sheetName}!K:M`);
+  const appendResp = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${appendRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values })
+    }
+  );
+  const appendData = await appendResp.json();
+  if (appendData.error) throw new Error(`Sheets API (append abandon warnings): ${appendData.error.message}`);
+  return appendData;
+}
+
 // ── API: FETCH SHEET (Service Account) ───────────────────────────────────────
-// GET /api/fetch-sheet?spreadsheetId=...&sheet=Inflow&type=inflow
-// hoặc  ?url=https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/...
+// type=inflow | enqueue | historical
 app.get('/api/fetch-sheet', async (req, res) => {
   try {
-    // Lấy spreadsheetId từ param url hoặc spreadsheetId
     let spreadsheetId = req.query.spreadsheetId;
     if (!spreadsheetId && req.query.url) {
       spreadsheetId = parseSpreadsheetId(req.query.url);
@@ -266,16 +316,22 @@ app.get('/api/fetch-sheet', async (req, res) => {
       return res.status(400).json({ error: 'Cần truyền spreadsheetId hoặc url chứa Spreadsheet ID' });
     }
 
-    const type      = (req.query.type || 'inflow').toLowerCase();
-    const sheetName = req.query.sheet || (type === 'enqueue' ? 'Enqueue' : 'Inflow');
+    const type = (req.query.type || 'inflow').toLowerCase();
+    const sheetName = req.query.sheet || (
+      type === 'enqueue' ? 'Enqueue' :
+      type === 'historical' ? 'Historical Data' : 'Inflow'
+    );
 
     console.log(`fetch-sheet | type:${type} sheet:${sheetName} id:${spreadsheetId}`);
-    const rows = await readSheet(spreadsheetId, sheetName);
 
-    // Helper: parse số với cả dấu chấm và dấu phẩy thập phân (vd: "0,034" → 0.034)
+    if (type === 'historical') {
+      const cols = await readHistoricalWide(spreadsheetId, sheetName);
+      return res.json(cols);
+    }
+
+    const rows = await readSheet(spreadsheetId, sheetName);
     const parseNum = v => parseFloat(String(v ?? '0').replace(',', '.')) || 0;
 
-    // Chuẩn hoá output
     if (type === 'enqueue') {
       const out = rows.map(r => {
         const rec = { date: (r.date || r.Date || '').trim() };
@@ -296,15 +352,15 @@ app.get('/api/fetch-sheet', async (req, res) => {
   }
 });
 
-// ── API: EXPORT SHIFT BREAKDOWN → Google Sheet (Append) ───────────────────────
-// POST /api/export-shift  body: { rows: [...] }  (rows lấy từ buildShiftExportRows() phía app.js)
-// Ghi APPEND vào đúng Spreadsheet ID + Tab của Agent 2, theo đúng thứ tự cột header hiện có.
+// ── API: EXPORT SHIFT BREAKDOWN + ABANDON WARNINGS → Google Sheet ───────────
+// POST /api/export-shift  body: { rows: [...], abandonRows: [...] }
 app.post('/api/export-shift', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   if (await getRole(req.user.email) === 'viewer') return res.status(403).json({ error: 'Forbidden' });
 
   try {
     const rows = req.body.rows;
+    const abandonRows = req.body.abandonRows || [];
     if (!Array.isArray(rows) || !rows.length) {
       return res.status(400).json({ error: 'Không có dữ liệu để export. Vui lòng chạy Run Optimizer trước.' });
     }
@@ -315,13 +371,20 @@ app.post('/api/export-shift', async (req, res) => {
       return res.status(500).json({ error: 'Chưa cấu hình EXPORT_SPREADSHEET_ID trong Environment Variables trên Render.' });
     }
 
-    console.log(`export-shift | rows:${rows.length} sheet:${sheetName} id:${spreadsheetId}`);
+    console.log(`export-shift | rows:${rows.length} abandonRows:${abandonRows.length} sheet:${sheetName} id:${spreadsheetId}`);
+
     const result = await appendSheetRows(spreadsheetId, sheetName, rows);
+    let abandonResult = null;
+    if (abandonRows.length) {
+      abandonResult = await appendAbandonWarnings(spreadsheetId, sheetName, abandonRows);
+    }
 
     res.json({
       ok: true,
       appended: rows.length,
+      abandonAppended: abandonRows.length,
       updatedRange: result.updates?.updatedRange || '',
+      abandonUpdatedRange: abandonResult?.updates?.updatedRange || '',
       sheetUrl: result.sheetUrl
     });
   } catch (err) {
@@ -331,8 +394,6 @@ app.post('/api/export-shift', async (req, res) => {
 });
 
 // ── API: AI INSIGHT — via Groq API (OpenAI-compatible, free tier) ─────────────
-// Groq: https://console.groq.com — đăng ký miễn phí, lấy API key ngay
-// Model mặc định: llama3-8b-8192 (nhanh, miễn phí, không giới hạn egress)
 app.post('/api/ai-insight', async (req, res) => {
   const { prompt, context } = req.body;
   if (!prompt || !context) return res.status(400).json({ error: 'Missing prompt or context' });
@@ -404,21 +465,20 @@ app.post('/api/config', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   if (await getRole(req.user.email) === 'viewer') return res.status(403).json({ error: 'Forbidden' });
   await dbSet('config', req.body);
-  // Gửi tín hiệu tới Make.com sau khi lưu config thành công
-if (process.env.MAKE_WEBHOOK_URL) {
-  try {
-    const { default: fetch } = await import('node-fetch');
-    await fetch(process.env.MAKE_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event: 'schedule_completed',
-        timestamp: new Date().toISOString(),
-        spreadsheetId: parseSpreadsheetId(req.body.sheetUrlInflow || '') || ''
-      })
-    });
-  } catch (e) { console.error('Make webhook notify error:', e.message); }
-}
+  if (process.env.MAKE_WEBHOOK_URL) {
+    try {
+      const { default: fetch } = await import('node-fetch');
+      await fetch(process.env.MAKE_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'schedule_completed',
+          timestamp: new Date().toISOString(),
+          spreadsheetId: parseSpreadsheetId(req.body.sheetUrlInflow || '') || ''
+        })
+      });
+    } catch (e) { console.error('Make webhook notify error:', e.message); }
+  }
   res.json({ ok: true });
 });
 
@@ -452,15 +512,13 @@ app.post('/api/trigger-schedule', async (req, res) => {
   try {
     const makeApiKey = req.headers['x-api-key'];
     const expectedKey = process.env.MAKE_API_KEY || 'ShiftIQ_Make_Secret_2026_@';
-    
+
     if (!makeApiKey || makeApiKey !== expectedKey) {
       return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
     }
 
-    // Lấy ma trận mảng 2 chiều động từ hàm của bạn
     const matrixGrid = await generateLiveMatrixGrid(req.body.spreadsheetId);
 
-    // ĐÓNG GÓI CHUẨN 100% CẤU TRÚC GOOGLE SHEETS API TẠI ĐÂY
     res.json({
       valueInputOption: "USER_ENTERED",
       data: [
@@ -477,37 +535,33 @@ app.post('/api/trigger-schedule', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-// HÀM QUAN TRỌNG: Tự động đo quét dữ liệu thực tế để vẽ lưới ma trận gửi sang Make
+
 async function generateLiveMatrixGrid(passedSpreadsheetId) {
   const grid = [];
 
   try {
-    // Lấy Spreadsheet ID từ Make truyền sang hoặc lấy cấu hình lưu trong DB của bạn
     const config = await dbGet('config') || {};
     const spreadsheetId = passedSpreadsheetId || config.spreadsheetId;
     async function generateScheduleRows() {
-  const config = await dbGet('config') || {};
-  const rows = config.shiftExportRows;
-  if (!rows || !rows.length) {
-    throw new Error('Chưa có dữ liệu Shift Breakdown. Vui lòng chạy Run Optimizer và bấm Save trên ShiftIQ trước khi export.');
-  }
-  return rows;
-}
+      const config = await dbGet('config') || {};
+      const rows = config.shiftExportRows;
+      if (!rows || !rows.length) {
+        throw new Error('Chưa có dữ liệu Shift Breakdown. Vui lòng chạy Run Optimizer và bấm Save trên ShiftIQ trước khi export.');
+      }
+      return rows;
+    }
     if (!spreadsheetId) {
       throw new Error("Chưa cấu hình Spreadsheet ID trong hệ thống hoặc không nhận được dữ liệu từ Make.");
     }
 
-    // Sử dụng chính hàm readSheet có sẵn của bạn để đọc tab 'Inflow'
-    const rows = await readSheet(spreadsheetId, 'Inflow'); 
-    
+    const rows = await readSheet(spreadsheetId, 'Inflow');
+
     if (!rows || rows.length === 0) {
       throw new Error("Không lấy được dữ liệu hoặc dữ liệu trống.");
     }
 
-    // A. TỰ ĐỘNG BÓC CỘT: Lấy toàn bộ danh sách ngày thực tế (Không giới hạn số ngày)
     const dynamicDates = rows.map(r => (r.date || r.Date || '').trim()).filter(Boolean);
 
-    // B. TỰ ĐỘNG BÓC CÁC HÀNG CHỈ SỐ CƠ BẢN
     const parseNum = v => parseFloat(String(v ?? '0').replace(',', '.')) || 0;
     const dynamicMetrics = [
       { name: "Inflow", values: rows.map(r => parseNum(r.inflow || r.Inflow)) },
@@ -515,13 +569,10 @@ async function generateLiveMatrixGrid(passedSpreadsheetId) {
       { name: "%Task Coverage (KF)", values: rows.map(r => r.coverage || r.Coverage || '0%') }
     ];
 
-    // C. TỰ ĐỘNG BÓC CÁC HÀNG CA KÍP (S0*, S0, S1, S2, S3, S7...)
-    // Tự quét tất cả các key ca kíp phát sinh từ thuật toán của bạn mà không cần khai báo cứng tên ca
     const sampleRow = rows[0] || {};
     const excludedKeys = ['date', 'Date', 'inflow', 'Inflow', 'hc_order', 'hc', 'coverage', 'Coverage'];
     const shiftNames = Object.keys(sampleRow).filter(key => !excludedKeys.includes(key));
 
-    // Đẩy từng ca kíp tìm được vào danh sách hàng
     shiftNames.forEach(shift => {
       dynamicMetrics.push({
         name: shift,
@@ -529,18 +580,14 @@ async function generateLiveMatrixGrid(passedSpreadsheetId) {
       });
     });
 
-    // D. TIẾN HÀNH ĐỔ VÀO LƯỚI HAI CHIỀU (MATRIX GRID)
-    // Hàng 1 luôn là Header: Tên cột Chỉ số + Toàn bộ các ngày động quét được
     grid.push(["Chỉ số (Metric)", ...dynamicDates]);
 
-    // Các hàng tiếp theo: Tên hàng + Toàn bộ giá trị tương ứng của hàng đó
     dynamicMetrics.forEach(metric => {
       grid.push([metric.name, ...metric.values]);
     });
 
   } catch (error) {
     console.error("Lỗi bóc tách ma trận tự động:", error.message);
-    // Trả về log lỗi dạng bảng nếu có trục trặc để không làm sập flow Make (Fallback an toàn)
     return [
       ["Chỉ số (Metric)", "Chi tiết lỗi từ Server"],
       ["Status", "Không thể dựng ma trận tự động"],
@@ -550,6 +597,7 @@ async function generateLiveMatrixGrid(passedSpreadsheetId) {
 
   return grid;
 }
+
 // ── STATIC ────────────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
