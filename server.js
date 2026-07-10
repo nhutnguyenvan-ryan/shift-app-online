@@ -288,22 +288,35 @@ async function appendAbandonWarnings(spreadsheetId, sheetName, rows) {
   const token = await getServiceAccountToken('https://www.googleapis.com/auth/spreadsheets');
   const { default: fetch } = await import('node-fetch');
 
-  const values = rows.map(r => [r.date, r.hour, r.abandon_pct]);
+  // Đọc trực tiếp cột K để xác định chính xác dòng trống tiếp theo.
+  // KHÔNG dùng insertDataOption=INSERT_ROWS trên vùng con K:M nữa — đây là nguyên nhân
+  // gây lệch dòng (ghi đè lên dòng Shift Breakdown ở cột A:I) khi 2 vùng dữ liệu có độ dài khác nhau.
+  const readRange = encodeURIComponent(`${sheetName}!K:K`);
+  const readResp = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${readRange}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const readData = await readResp.json();
+  if (readData.error) throw new Error(`Sheets API (đọc cột K): ${readData.error.message}`);
+  const existingRows = (readData.values || []).length;
+  const startRow = existingRows + 1;
 
-  const appendRange = encodeURIComponent(`${sheetName}!K:M`);
-  const appendResp = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${appendRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+  const values = rows.map(r => [r.date, r.hour, r.abandon_pct]);
+  const targetRange = `${sheetName}!K${startRow}:M${startRow + values.length - 1}`;
+  const encodedRange = encodeURIComponent(targetRange);
+
+  const writeResp = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodedRange}?valueInputOption=USER_ENTERED`,
     {
-      method: 'POST',
+      method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values })
+      body: JSON.stringify({ range: targetRange, values })
     }
   );
-  const appendData = await appendResp.json();
-  if (appendData.error) throw new Error(`Sheets API (append abandon warnings): ${appendData.error.message}`);
-  return appendData;
+  const writeData = await writeResp.json();
+  if (writeData.error) throw new Error(`Sheets API (ghi abandon warnings): ${writeData.error.message}`);
+  return { updates: { updatedRange: writeData.updatedRange } };
 }
-
 // ── API: FETCH SHEET (Service Account) ───────────────────────────────────────
 // type=inflow | enqueue | historical
 app.get('/api/fetch-sheet', async (req, res) => {
