@@ -9,6 +9,11 @@ let weekData = [], manualShift = {};
 let weekChart = null, shiftChart = null;
 let historicalData = []; // dữ liệu lịch sử từ tab "Historical Data" (Google Sheet)
 
+// Canvas (Chart.js) không kế thừa font-family từ CSS → ép font đồng bộ toàn hệ thống
+if (typeof Chart !== 'undefined') {
+  Chart.defaults.font.family = "'Times New Roman', Times, serif";
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
   await fetchMe();
@@ -148,7 +153,7 @@ function renderAbandonWarnings(){
   const warnings=buildAbandonWarnings();
   if(!warnings.length){
     wrap.innerHTML=`<div class="table-card">
-      <div class="table-card-title">⚠ Abandon Alerts — Hours Exceeding Target</div>
+      <div class="table-card-title">⚠️ Abandon Alerts — Hours Exceeding Target</div>
       <div style="padding:14px 18px;font-size:12px;color:var(--text3)">Không có khung giờ nào vượt target Abandon trong tuần này.</div>
     </div>`;
     return;
@@ -163,7 +168,7 @@ function renderAbandonWarnings(){
     return `<tr><td><strong>${info.dowLabel} ${dateStr}</strong></td><td>${hoursStr}</td></tr>`;
   }).join('');
   wrap.innerHTML=`<div class="table-card">
-    <div class="table-card-title">⚠ Abandon Alerts — Hours Exceeding Target</div>
+    <div class="table-card-title">⚠️ Abandon Alerts — Hours Exceeding Target</div>
     <div class="table-scroll"><table class="data-table">
       <thead><tr><th>Ngày</th><th>Khung giờ abandon cao</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -894,13 +899,13 @@ function renderShiftHeatmap(){
   const perDay=weekData.map(w=>getCoverageByType(w.d));
   const colW=Math.max(72, Math.floor((wrap.offsetWidth-70)/Math.max(weekData.length,1)));
 
-  let html=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:8px 4px;border-bottom:1px solid var(--border)">
-    <span style="font-size:11px;color:var(--text3);font-weight:700;margin-right:8px">Legend</span>
-    <span style="display:inline-flex;align-items:center;gap:6px;margin-right:20px;font-size:12px;color:var(--text2)">
-      <span style="width:12px;height:12px;border-radius:50%;background:#2563eb;display:inline-block"></span> Agent Full-time
+  let html=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding:8px 4px;border-bottom:1px solid var(--border)">
+    <span style="font-size:12px;color:var(--text3);font-weight:700;margin-right:8px">Legend</span>
+    <span style="display:inline-flex;align-items:center;gap:8px;margin-right:20px;font-size:13px;color:var(--text2)">
+      <span style="width:18px;height:18px;border-radius:50%;background:#2563eb;display:inline-block"></span> Agent Full-time
     </span>
-    <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
-      <span style="width:12px;height:12px;border-radius:50%;background:#f59e0b;display:inline-block"></span> Agent Part-time
+    <span style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">
+      <span style="width:18px;height:18px;border-radius:50%;background:#f59e0b;display:inline-block"></span> Agent Part-time
     </span>
   </div>`;
 
@@ -914,10 +919,10 @@ function renderShiftHeatmap(){
     weekData.forEach((_,di)=>{
       const ft=perDay[di].covFT[h], pt=perDay[di].covPT[h];
       let cell='';
-      if(ft>0||pt>0){
+     if(ft>0||pt>0){
         const parts=[];
-        if(ft>0) parts.push(`<span style="color:#2563eb;font-weight:700">${ft}</span> <span style="color:#2563eb">●</span>`);
-        if(pt>0) parts.push(`<span style="color:#f59e0b;font-weight:700">${pt}</span> <span style="color:#f59e0b">●</span>`);
+        if(ft>0) parts.push(`<span style="color:#2563eb;font-weight:700">${ft}</span> <span style="color:#2563eb;font-size:17px;vertical-align:middle">●</span>`);
+        if(pt>0) parts.push(`<span style="color:#f59e0b;font-weight:700">${pt}</span> <span style="color:#f59e0b;font-size:17px;vertical-align:middle">●</span>`);
         cell=parts.join(' <span style="color:#c8ccd8">|</span> ');
       }
       const bg=(ft+pt)>0?'rgba(37,99,235,.04)':'#fff';
@@ -951,11 +956,15 @@ function buildWorkModeData(){
   return weekData.map(w=>{
     const sc=getEff(w.d).shiftCounts;
     let wfh=0,floor=0;
+    const wfhShifts=[],floorShifts=[];
     ALL_SHIFTS.forEach(s=>{
       const n=sc[s.name]||0; if(!n)return;
-      if(isWFH(s)) wfh+=n; else floor+=n;
+      if(isWFH(s)){ wfh+=n; wfhShifts.push(s.name); }
+      else { floor+=n; floorShifts.push(s.name); }
     });
-    return{dateStr:w.dateStr,dowLabel:w.dowLabel,event:w.event,wfh:+(wfh.toFixed(1)),floor:+(floor.toFixed(1)),total:+(wfh+floor).toFixed(1)};
+    return{dateStr:w.dateStr,dowLabel:w.dowLabel,event:w.event,
+      wfh:+(wfh.toFixed(1)),floor:+(floor.toFixed(1)),total:+(wfh+floor).toFixed(1),
+      wfhShifts,floorShifts};
   });
 }
 
@@ -1012,6 +1021,9 @@ function renderWorkMode(){
     }
   });
 
+  // Cùng bảng màu event với Weekly Overview / pivot-week (đồng bộ toàn hệ thống)
+  const evtColorsWM={Normal:'#059669',Spike:'#dc2626','Spike-1':'#d97706','14th':'#2563eb','15th':'#2563eb','24th':'#7c3aed','25th':'#7c3aed',Sat:'#6b7280',Sun:'#6b7280'};
+
   document.getElementById('workModeTable').innerHTML=`
     <table class="data-table"><thead><tr>
       <th>Date</th><th>Day</th><th>Event</th>
@@ -1019,11 +1031,14 @@ function renderWorkMode(){
     </tr></thead><tbody>
     ${data.map(d=>{
       const pct=d.total>0?(d.wfh/d.total*100).toFixed(1):'0.0';
+      const c=evtColorsWM[d.event]||'#6b7280';
+      const wfhList=d.wfhShifts.length?` <span style="color:var(--text3);font-weight:400;font-size:11px">(${d.wfhShifts.join(',')})</span>`:'';
+      const floorList=d.floorShifts.length?` <span style="color:var(--text3);font-weight:400;font-size:11px">(${d.floorShifts.join(',')})</span>`:'';
       return`<tr>
         <td>${d.dateStr}</td><td>${d.dowLabel}</td>
-        <td><span class="badge badge-gray">${d.event}</span></td>
-        <td style="color:#7c3aed;font-weight:600">${d.wfh}</td>
-        <td style="color:#059669;font-weight:600">${d.floor}</td>
+        <td><strong style="color:${c}">${d.event}</strong></td>
+        <td style="color:#7c3aed;font-weight:600">${d.wfh}${wfhList}</td>
+        <td style="color:#059669;font-weight:600">${d.floor}${floorList}</td>
         <td>${d.total}</td>
         <td><span class="badge ${parseFloat(pct)>50?'badge-blue':'badge-green'}">${pct}%</span></td>
       </tr>`;
