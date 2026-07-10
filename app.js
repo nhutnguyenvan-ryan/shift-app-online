@@ -529,6 +529,23 @@ const SHIFTS_PT=[
 (()=>{const s=SHIFTS_PT.find(x=>x.name==='P5');const sl=[];for(let i=0;i<4;i++)sl.push({abs:i,h:i,day:0});s.slots=sl;s.hrs_today=[0,1,2,3];s.hrs_next=[];})();
 const ALL_SHIFTS=[...SHIFTS_FT,...SHIFTS_PT];
 
+// Hiển thị khung giờ (in-break-out) của ca — CHỈ dùng cho UI, không ảnh hưởng dữ liệu export.
+// FT có break: "(start-break-end)". FT/PT không break: "(start-end)".
+function shiftTimeLabel(s){
+  const startH = s.start % 24;
+  if(s.cost === 1){
+    const endH = (s.start + 9) % 24;
+    let brkH = null;
+    for(let i=0;i<9;i++){
+      const abs = s.start + i;
+      if(!s.slots.some(sl => sl.abs === abs)){ brkH = abs % 24; break; }
+    }
+    return brkH !== null ? `(${startH}-${brkH}-${endH})` : `(${startH}-${endH})`;
+  }
+  const endH = (s.start + 4) % 24;
+  return `(${startH}-${endH})`;
+}
+
 function calcCoverage(sc,carryIn){
   const cov=new Array(24).fill(0);
   if(carryIn)for(let h=0;h<24;h++)cov[h]+=carryIn[h]||0;
@@ -658,6 +675,21 @@ function populateSelects(){
   });
 }
 function getEff(d){return manualShift[d]||weekData[d].opt;}
+
+// Tách coverage theo loại ca (FT/PT) cho từng giờ — dùng cho Heatmap.
+// Carry-in từ ngày trước cũng được tách loại dựa trên shiftCounts thực tế của ngày trước đó.
+function getCoverageByType(d){
+  const covFT=new Array(24).fill(0), covPT=new Array(24).fill(0);
+  if(d>0){
+    const prevSc=getEff(d-1).shiftCounts;
+    SHIFTS_FT.forEach(s=>{const n=prevSc[s.name]||0; if(n>0) s.hrs_next.forEach(h=>covFT[h]+=n);});
+    SHIFTS_PT.forEach(s=>{const n=prevSc[s.name]||0; if(n>0) s.hrs_next.forEach(h=>covPT[h]+=n);});
+  }
+  const sc=getEff(d).shiftCounts;
+  SHIFTS_FT.forEach(s=>{const n=sc[s.name]||0; if(n>0) s.hrs_today.forEach(h=>covFT[h]+=n);});
+  SHIFTS_PT.forEach(s=>{const n=sc[s.name]||0; if(n>0) s.hrs_today.forEach(h=>covPT[h]+=n);});
+  return {covFT, covPT};
+}
 
 // ── RENDER WEEK ────────────────────────────────────────────────────────────────
 function renderWeekGrid(){
@@ -822,7 +854,7 @@ function renderShiftBreakdown(){
     <tr class="pw-cov"><td class="pw-label-col">%Task Coverage (KF)</td>${weekData.map(w=>{const e2=getEff(w.d);const ok=e2.coverage_pct>=w.eventTarget;return`<td><span style="color:${ok?'var(--success)':'var(--danger)'}">${(e2.coverage_pct*100).toFixed(1)}%</span></td>`;}).join('')}</tr>
     <tr class="pw-section-hdr"><td class="pw-label-col">Breakdown by Shift</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
 
-  const activeFT=SHIFTS_FT.filter(s=>activeShifts.has(s.name));
+ const activeFT=SHIFTS_FT.filter(s=>activeShifts.has(s.name));
   if(activeFT.length){
     tbody+=`<tr class="pw-shift-group"><td class="pw-label-col pw-shift-type-label">F (Fulltime)</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
     activeFT.forEach(s=>{
@@ -830,7 +862,7 @@ function renderShiftBreakdown(){
         const n=getEff(w.d).shiftCounts[s.name]||0;
         return`<td style="font-weight:400">${n>0?n.toFixed(1):''}</td>`;
       }).join('');
-      tbody+=`<tr class="pw-shift"><td class="pw-label-col" style="font-family:var(--mono);font-size:11px;font-weight:400;color:var(--text2)">${s.name}</td>${cells}</tr>`;
+      tbody+=`<tr class="pw-shift"><td class="pw-label-col" style="font-family:var(--mono);font-size:11px;font-weight:400;color:var(--text2)">${s.name} <span style="color:var(--text4);font-size:9px">${shiftTimeLabel(s)}</span></td>${cells}</tr>`;
     });
   }
 
@@ -842,7 +874,7 @@ function renderShiftBreakdown(){
         const n=getEff(w.d).shiftCounts[s.name]||0;
         return`<td style="font-weight:400">${n>0?n.toFixed(1):''}</td>`;
       }).join('');
-      tbody+=`<tr class="pw-shift"><td class="pw-label-col" style="font-family:var(--mono);font-size:11px;font-weight:400;color:var(--text2)">${s.name}</td>${cells}</tr>`;
+      tbody+=`<tr class="pw-shift"><td class="pw-label-col" style="font-family:var(--mono);font-size:11px;font-weight:400;color:var(--text2)">${s.name} <span style="color:var(--text4);font-size:9px">${shiftTimeLabel(s)}</span></td>${cells}</tr>`;
     });
   }
 
@@ -859,20 +891,20 @@ function renderShiftHeatmap(){
   const wrap=document.getElementById('shiftHeatmapWrap');
   if(!wrap||!weekData.length)return;
 
-  const matrix=Array.from({length:24},(_,h)=>weekData.map(w=>getEff(w.d).coverage[h]||0));
-  const maxVal=Math.max(...matrix.flat(),1);
+  const perDay=weekData.map(w=>getCoverageByType(w.d));
+  const colW=Math.max(72, Math.floor((wrap.offsetWidth-70)/Math.max(weekData.length,1)));
 
-  function heatColor(v){
-    const pct=v/maxVal;
-    if(pct===0)return{bg:'#f1f3f8',text:'#a8afc8'};
-    if(pct<0.3)return{bg:`rgba(37,99,235,${0.1+pct*0.5})`,text:'#2563eb'};
-    if(pct<0.6)return{bg:`rgba(37,99,235,${0.35+pct*0.4})`,text:'#fff'};
-    return{bg:`rgba(30,64,175,${0.6+pct*0.35})`,text:'#fff'};
-  }
+  let html=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:8px 4px;border-bottom:1px solid var(--border)">
+    <span style="font-size:11px;color:var(--text3);font-weight:700;margin-right:8px">Legend</span>
+    <span style="display:inline-flex;align-items:center;gap:6px;margin-right:20px;font-size:12px;color:var(--text2)">
+      <span style="width:12px;height:12px;border-radius:50%;background:#2563eb;display:inline-block"></span> Agent Full-time
+    </span>
+    <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+      <span style="width:12px;height:12px;border-radius:50%;background:#f59e0b;display:inline-block"></span> Agent Part-time
+    </span>
+  </div>`;
 
-  const colW=Math.max(52, Math.floor((wrap.offsetWidth-130)/Math.max(weekData.length,1)));
-
-  let html=`<div class="heatmap-scroll"><table class="heatmap-table">
+  html+=`<div class="heatmap-scroll"><table class="heatmap-table">
     <thead><tr><th class="hm-label-col">Hour</th>
     ${weekData.map(w=>`<th style="min-width:${colW}px"><div style="font-size:10px;color:#7c84a3;font-weight:700">${w.dowLabel}</div><div style="font-size:9px;color:#a8afc8">${w.dateStr.slice(0,5)}</div></th>`).join('')}
     </tr></thead><tbody>`;
@@ -880,27 +912,20 @@ function renderShiftHeatmap(){
   for(let h=0;h<24;h++){
     html+=`<tr><td class="hm-label-col">${String(h).padStart(2,'0')}:00</td>`;
     weekData.forEach((_,di)=>{
-      const v=matrix[h][di];
-      const {bg,text}=heatColor(v);
-      const isTop=v===maxVal&&v>0;
-      html+=`<td style="background:${bg};color:${text};text-align:center;font-size:11px;font-family:var(--mono);padding:5px 4px;border:1px solid rgba(255,255,255,.4);position:relative">
-        ${v>0?v.toFixed(0):''}${isTop?'<span style="position:absolute;top:1px;right:2px;font-size:7px">★</span>':''}
-      </td>`;
+      const ft=perDay[di].covFT[h], pt=perDay[di].covPT[h];
+      let cell='';
+      if(ft>0||pt>0){
+        const parts=[];
+        if(ft>0) parts.push(`<span style="color:#2563eb;font-weight:700">${ft}</span> <span style="color:#2563eb">●</span>`);
+        if(pt>0) parts.push(`<span style="color:#f59e0b;font-weight:700">${pt}</span> <span style="color:#f59e0b">●</span>`);
+        cell=parts.join(' <span style="color:#c8ccd8">|</span> ');
+      }
+      const bg=(ft+pt)>0?'rgba(37,99,235,.04)':'#fff';
+      html+=`<td style="background:${bg};text-align:center;font-size:11px;font-family:var(--mono);padding:5px 4px;border:1px solid rgba(0,0,0,.05)">${cell}</td>`;
     });
     html+=`</tr>`;
   }
   html+=`</tbody></table></div>`;
-
-  html+=`<div class="heatmap-legend">
-    <span style="font-size:11px;color:#7c84a3;margin-right:12px">Mật độ:</span>
-    ${['Low','Medium','High','Peak'].map((lb,i)=>{
-      const pcts=[0.1,0.35,0.65,1];
-      const bg=i===0?'#f1f3f8':`rgba(37,99,235,${pcts[i]})`;
-      return`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:11px;color:#7c84a3">
-        <span style="width:14px;height:14px;background:${bg};border-radius:3px;display:inline-block"></span>${lb}</span>`;
-    }).join('')}
-    <span style="font-size:10px;color:#a8afc8;margin-left:8px">★ = peak hour</span>
-  </div>`;
 
   wrap.innerHTML=html;
 }
@@ -961,8 +986,8 @@ function renderWorkMode(){
     data:{
       labels:data.map(d=>`${d.dowLabel} ${d.dateStr.slice(0,5)}`),
       datasets:[
-        {label:'WFH',data:data.map(d=>d.wfh),backgroundColor:'rgba(124,58,237,.75)',borderRadius:3,stack:'s'},
-        {label:'On-Floor',data:data.map(d=>d.floor),backgroundColor:'rgba(5,150,105,.7)',borderRadius:3,stack:'s'}
+        {label:'🏠 WFH',data:data.map(d=>d.wfh),backgroundColor:'rgba(124,58,237,.75)',borderRadius:3,stack:'s'},
+        {label:'🏢 On-Floor',data:data.map(d=>d.floor),backgroundColor:'rgba(5,150,105,.7)',borderRadius:3,stack:'s'}
       ]
     },
     options:{
@@ -971,7 +996,14 @@ function renderWorkMode(){
       plugins:{
         legend:{labels:{font:{size:12},color:'#3d4766',boxWidth:14,padding:16}},
         tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} HC`}},
-        datalabels:{display:false}
+        datalabels:{
+          display:ctx=>ctx.dataset.data[ctx.dataIndex]>0,
+          color:'#fff',
+          font:{size:10,weight:'700'},
+          anchor:'center',
+          align:'center',
+          formatter:(v,ctx)=> ctx.datasetIndex===0 ? `${v.toFixed(1)} 🏠` : `${v.toFixed(1)} 🏢`
+        }
       },
       scales:{
         x:{stacked:true,ticks:{color:'#7c84a3',font:{size:11},maxRotation:30},grid:{display:false}},
