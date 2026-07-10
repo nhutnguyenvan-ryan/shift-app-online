@@ -3,11 +3,11 @@ let currentRole = 'viewer';
 let currentUser = null;
 let HOUR_PROD = 1224;
 let TARGET = 0.93;
-// Per-event-type target coverage overrides (null = use default TARGET)
 let EVENT_TARGETS = {Normal:null,Spike:null,'Spike-1':null,'14th':null,'15th':null,'24th':null,'25th':null,Sat:null,Sun:null};
 let inflowData = {}, enqueueData = {};
 let weekData = [], manualShift = {};
 let weekChart = null, shiftChart = null;
+let historicalData = []; // dữ liệu lịch sử từ tab "Historical Data" (Google Sheet)
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
@@ -46,14 +46,12 @@ function applyRole() {
     chip.className = `role-chip ${currentRole}`;
   }
 
-  // Disable inputs for viewers
   const inputs = document.querySelectorAll('.param-bar input, .hc-input, #newEditorEmail, #specialTargetGrid input');
   inputs.forEach(el => el.disabled = !canEdit);
   document.getElementById('runBtn').disabled = !canEdit;
   document.getElementById('exportBtn').disabled = !canEdit;
   document.getElementById('saveBtn').classList.toggle('hidden', !canEdit);
 
-  // Hide upload actions for viewers
   document.querySelectorAll('.drop-zone').forEach(z => {
     z.style.pointerEvents = canEdit ? 'auto' : 'none';
     z.style.opacity = canEdit ? '1' : '0.5';
@@ -92,7 +90,8 @@ function setEventTarget(ev,val){
 function toggleSpecialTargets(){
   document.getElementById('specialTargetPanel').classList.toggle('hidden');
 }
-// Trích xuất dữ liệu đúng theo bảng "Optimized HC Order by Day — Breakdown by Shift"
+
+// Trích xuất dữ liệu Shift Breakdown (cột A:I trên Google Sheet)
 function buildShiftExportRows() {
   if (!weekData.length) return [];
   const rows = [];
@@ -100,7 +99,7 @@ function buildShiftExportRows() {
     const e = getEff(wd.d);
     ALL_SHIFTS.forEach(s => {
       const count = e.shiftCounts[s.name] || 0;
-      if (count <= 0) return; // chỉ export ca có nhân sự phân bổ, khớp với bảng hiển thị (ẩn hàng rỗng)
+      if (count <= 0) return;
       rows.push({
         date: wd.dateStr,
         dow: wd.dowLabel,
@@ -117,7 +116,62 @@ function buildShiftExportRows() {
   return rows;
 }
 
-// ── EXPORT SHIFT DATA → Google Sheet (Append, giữ nguyên Sheet của Agent 2) ──
+// ── ABANDON WARNINGS — khung giờ %Abandon vượt target theo từng ngày ────────
+// Ngưỡng: Abandon target = 1 − Coverage Target (áp dụng theo target riêng của từng event nếu có override)
+function buildAbandonWarnings(){
+  if(!weekData.length) return [];
+  const warnings=[];
+  weekData.forEach(wd=>{
+    const e=getEff(wd.d);
+    const abandonTarget=1-wd.eventTarget;
+    wd.hourInflows.forEach((inf,h)=>{
+      const cov=e.coverage[h]||0;
+      const ab=Math.max(inf-cov*HOUR_PROD,0);
+      const abPct=inf>0?ab/inf:0;
+      if(abPct>abandonTarget){
+        warnings.push({
+          dateStr: wd.dateStr,
+          dowLabel: wd.dowLabel,
+          hour: h,
+          abandon_pct: +(abPct*100).toFixed(1)
+        });
+      }
+    });
+  });
+  return warnings;
+}
+
+// Render bảng cảnh báo trong tab Shift Allocation — format: Ngày | Khung giờ abandon cao
+function renderAbandonWarnings(){
+  const wrap=document.getElementById('abandonWarningsWrap');
+  if(!wrap)return;
+  const warnings=buildAbandonWarnings();
+  if(!warnings.length){
+    wrap.innerHTML=`<div class="table-card">
+      <div class="table-card-title">⚠ Abandon Alerts — Hours Exceeding Target</div>
+      <div style="padding:14px 18px;font-size:12px;color:var(--text3)">Không có khung giờ nào vượt target Abandon trong tuần này.</div>
+    </div>`;
+    return;
+  }
+  const byDay={};
+  warnings.forEach(w=>{
+    if(!byDay[w.dateStr]) byDay[w.dateStr]={dowLabel:w.dowLabel, hours:[]};
+    byDay[w.dateStr].hours.push(w);
+  });
+  const rows=Object.entries(byDay).map(([dateStr,info])=>{
+    const hoursStr=info.hours.map(h=>`<span class="badge badge-red" style="margin-right:4px">${h.hour}h (${h.abandon_pct.toFixed(1)}%)</span>`).join('');
+    return `<tr><td><strong>${info.dowLabel} ${dateStr}</strong></td><td>${hoursStr}</td></tr>`;
+  }).join('');
+  wrap.innerHTML=`<div class="table-card">
+    <div class="table-card-title">⚠ Abandon Alerts — Hours Exceeding Target</div>
+    <div class="table-scroll"><table class="data-table">
+      <thead><tr><th>Ngày</th><th>Khung giờ abandon cao</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+// ── EXPORT SHIFT DATA + ABANDON WARNINGS → Google Sheet ───────────────────────
 async function exportShiftData() {
   if (!weekData.length) {
     showExportModal('⚠ Chưa có dữ liệu', 'Vui lòng chạy Run Optimizer trước khi export.', true);
@@ -129,9 +183,15 @@ async function exportShiftData() {
   try {
     const rows = buildShiftExportRows();
     if (!rows.length) throw new Error('Không có dòng dữ liệu ca nào có nhân sự để export.');
+
+    const abandonWarnings = buildAbandonWarnings();
+    const abandonRows = abandonWarnings.map(w => ({
+      date: w.dateStr, hour: w.hour, abandon_pct: w.abandon_pct
+    }));
+
     const res = await fetch('/api/export-shift', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows })
+      body: JSON.stringify({ rows, abandonRows })
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
@@ -148,7 +208,7 @@ async function exportShiftData() {
 
     showExportModal(
       '✅ Export thành công',
-      `Đã ghi thêm <strong>${data.appended}</strong> dòng vào Google Sheet.${data.updatedRange ? `<br><span style="font-size:11px;color:var(--text3)">Range: ${data.updatedRange}</span>` : ''}${linkHtml}`,
+      `Đã ghi thêm <strong>${data.appended}</strong> dòng Shift Breakdown${data.abandonAppended ? ` và <strong>${data.abandonAppended}</strong> dòng cảnh báo Abandon` : ''} vào Google Sheet.${data.updatedRange ? `<br><span style="font-size:11px;color:var(--text3)">Range: ${data.updatedRange}</span>` : ''}${linkHtml}`,
       false
     );
   } catch (err) {
@@ -167,6 +227,7 @@ function showExportModal(title, msgHtml, isError) {
 function closeExportModal() {
   document.getElementById('exportModal').classList.add('hidden');
 }
+
 // ── CONFIG SAVE / LOAD ────────────────────────────────────────────────────────
 async function saveConfig() {
   const shiftExportRows = buildShiftExportRows();
@@ -179,7 +240,7 @@ async function saveConfig() {
     inflowData, enqueueData,
     sheetUrlInflow: window._sheetUrlInflow||'',
     sheetUrlEnqueue: window._sheetUrlEnqueue||'',
-    shiftExportRows // ← dữ liệu chi tiết theo ca, dùng để export sang Google Sheets
+    shiftExportRows
   };
   await fetch('/api/config', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -202,6 +263,7 @@ async function loadSharedConfig() {
   if (config.sheetUrlInflow){window._sheetUrlInflow=config.sheetUrlInflow;const el=document.getElementById('sheetUrlInflow');if(el)el.value=config.sheetUrlInflow;}
   if (config.sheetUrlEnqueue){window._sheetUrlEnqueue=config.sheetUrlEnqueue;const el=document.getElementById('sheetUrlEnqueue');if(el)el.value=config.sheetUrlEnqueue;}
   updateDerived();
+  if (window._sheetUrlInflow) fetchHistoricalData();
   if (Object.keys(inflowData).length) {
     setStatus('inflow', `✅ Loaded ${Object.keys(inflowData).length} days from saved config`, 'ok');
     calcWeek();
@@ -339,7 +401,6 @@ function downloadCSV(content, filename) {
 }
 
 // ── GOOGLE SHEETS IMPORT ──────────────────────────────────────────────────────
-// Converts various Sheets URL formats to CSV export URL (for public sheets)
 function sheetsToCSV(url, sheetName){
   let id='';
   const m=url.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
@@ -351,10 +412,6 @@ function sheetsToCSV(url, sheetName){
   return`https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
 }
 
-// Detect Apps Script Web App URL
-// Hỗ trợ cả 2 dạng:
-//   Public:     https://script.google.com/macros/s/.../exec
-//   Workspace:  https://script.google.com/a/macros/DOMAIN.com/s/.../exec
 function isAppsScriptURL(url){
   return /script\.google\.com\/(a\/macros\/[^/]+\/|macros\/)s\/.+\/exec/.test(url.trim());
 }
@@ -364,7 +421,6 @@ async function fetchSheetData(type){
   const raw=document.getElementById(inputId).value.trim();
   if(!raw){setStatus(type,'⚠ Please enter a Spreadsheet URL or ID first','err');return;}
 
-  // Lấy spreadsheetId từ URL hoặc raw ID
   let spreadsheetId='';
   const m=raw.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
   if(m) spreadsheetId=m[1];
@@ -382,7 +438,7 @@ async function fetchSheetData(type){
     if(!res.ok||json.error)throw new Error(json.error||`HTTP ${res.status}`);
     if(type==='inflow')parseInflowJSON(Array.isArray(json)?json:[json]);
     else parseEnqueueJSON(Array.isArray(json)?json:[json]);
-    if(type==='inflow'){window._sheetUrlInflow=raw;window._sheetNameInflow=sheetName;}
+    if(type==='inflow'){window._sheetUrlInflow=raw;window._sheetNameInflow=sheetName;fetchHistoricalData();}
     else{window._sheetUrlEnqueue=raw;window._sheetNameEnqueue=sheetName;}
   }catch(err){
     setStatus(type,`❌ ${err.message}`,'err');
@@ -417,6 +473,33 @@ async function refreshAllSheets(){
   if(window._sheetUrlInflow){document.getElementById('sheetUrlInflow').value=window._sheetUrlInflow;await fetchSheetData('inflow');fetched++;}
   if(window._sheetUrlEnqueue){document.getElementById('sheetUrlEnqueue').value=window._sheetUrlEnqueue;await fetchSheetData('enqueue');fetched++;}
   if(!fetched)setStatus('inflow','⚠ No Sheet URL saved yet','err');
+}
+
+// ── HISTORICAL DATA (dùng cho AI dự đoán peak-inflow) ────────────────────────
+// Lấy từ cùng Spreadsheet đang dùng cho Inflow, tab "Historical Data" (dạng wide, xem readHistoricalWide bên server)
+async function fetchHistoricalData(){
+  const raw = window._sheetUrlInflow;
+  if(!raw) return;
+  let spreadsheetId='';
+  const m=raw.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if(m) spreadsheetId=m[1];
+  else if(/^[a-zA-Z0-9_-]{20,}$/.test(raw)) spreadsheetId=raw;
+  if(!spreadsheetId) return;
+  try{
+    const res=await fetch(`/api/fetch-sheet?type=historical&spreadsheetId=${encodeURIComponent(spreadsheetId)}&sheet=${encodeURIComponent('Historical Data')}`);
+    const json=await res.json();
+    if(res.ok && Array.isArray(json)) historicalData=json;
+  }catch(err){
+    console.error('fetchHistoricalData error:', err.message);
+  }
+}
+
+// Tìm ngày lịch sử gần nhất cùng loại event
+function getLastSameEventHistory(eventType){
+  const matches=historicalData.filter(c=>c.event===eventType);
+  if(!matches.length) return null;
+  matches.sort((a,b)=>parseDateStr(b.date)-parseDateStr(a.date));
+  return matches[0];
 }
 
 // ── SHIFT DEFINITIONS ─────────────────────────────────────────────────────────
@@ -460,30 +543,25 @@ function calcCarryOut(sc){
 function dailyTask(cov,inflows){let t=0;for(let h=0;h<24;h++)t+=Math.min(cov[h]*HOUR_PROD,inflows[h]);return t;}
 
 // ── PT → FT CONSOLIDATION ────────────────────────────────────────────────────
-// Các cặp PT có thể ghép thành FT (break đúng 1h sau 4h làm)
-// Điều kiện: 2 PT liên tiếp không overlap, tổng 8h làm + 1h break = FT shift
 const PT_MERGE_RULES = [
-  // [ptA, ptB, ftResult] — ptA.hours + ptB.hours = ft.hours_today
-  {a:'P11',b:'P15',ft:'S1'},  // P11:8-12 + P15:15-19 → S1 start 8 brk 12
-  {a:'P10',b:'P15',ft:'S3'},  // P10:10-14 + P15:15-19 → S3 start 10 brk 14
-  {a:'P11',b:'P8', ft:'S1'},  // P11:8-12 + P8:16-20  → S1 start 8 brk 12 (close enough)
-  {a:'P1', b:'P13',ft:'S2'},  // P1:9-13 + P13:17-21  → S2 start 9 brk 13
-  {a:'P6', b:'P13',ft:'S5'},  // P6:12-16 + P13:17-21 → S5 start 13 brk 17 (approx)
-  {a:'P7', b:'P13',ft:'S4'},  // P7:11-15 + P13:17-21 → S4 start 11 brk 15
-  {a:'P12',b:'P10',ft:'S0'},  // P12:7-11 + P10:10… not right — skip via validation
-  {a:'P2', b:'P14',ft:'S8'},  // P2:13-17 + P14:18-22 → S8 start 14 brk 18 (approx)
+  {a:'P11',b:'P15',ft:'S1'},
+  {a:'P10',b:'P15',ft:'S3'},
+  {a:'P11',b:'P8', ft:'S1'},
+  {a:'P1', b:'P13',ft:'S2'},
+  {a:'P6', b:'P13',ft:'S5'},
+  {a:'P7', b:'P13',ft:'S4'},
+  {a:'P12',b:'P10',ft:'S0'},
+  {a:'P2', b:'P14',ft:'S8'},
 ];
 
 function validateMerge(ptA, ptB, ftShift) {
-  // Kiểm tra giờ làm của FT = union của 2 PT (không tính break)
   const aHrs = new Set(ptA.hrs_today);
   const bHrs = new Set(ptB.hrs_today);
   const ftHrs = new Set(ftShift.hrs_today);
   const union = new Set([...aHrs, ...bHrs]);
-  // FT hours phải là superset của union (có thể có thêm 1 giờ đầu/cuối)
   let match = 0;
   union.forEach(h => { if(ftHrs.has(h)) match++; });
-  return match >= Math.min(union.size, ftHrs.size) - 1; // cho phép sai lệch 1h
+  return match >= Math.min(union.size, ftHrs.size) - 1;
 }
 
 function consolidatePTtoFT(sc) {
@@ -520,7 +598,6 @@ function optimize(inflows,carryIn,target){
     if(bSi<0||bSc<=0)break;
     ac[ALL_SHIFTS[bSi].name]++;ALL_SHIFTS[bSi].hrs_today.forEach(h=>cov[h]++);
   }
-  // Consolidate PT pairs → FT where possible
   const mergedSc = consolidatePTtoFT(ac);
   const covMerged = calcCoverage(mergedSc, carryIn);
   const carryOut=calcCarryOut(mergedSc),completed=dailyTask(covMerged,inflows);
@@ -534,7 +611,6 @@ function getEventType(ds,dow){
   const p=ds.split('.');if(p.length<3)return dow===6?'Sat':dow===0?'Sun':'Normal';
   const d=parseInt(p[0]),m=parseInt(p[1]),y=parseInt(p[2]);
   if(d===m)return 'Spike';
-  // Spike-1: ngày liền kề TRƯỚC một ngày Spike
   const nextDt=new Date(y,m-1,d);nextDt.setDate(nextDt.getDate()+1);
   if(nextDt.getDate()===nextDt.getMonth()+1)return 'Spike-1';
   if(d===14)return '14th';if(d===15)return '15th';if(d===24)return '24th';if(d===25)return '25th';
@@ -585,17 +661,14 @@ function getEff(d){return manualShift[d]||weekData[d].opt;}
 
 // ── RENDER WEEK ────────────────────────────────────────────────────────────────
 function renderWeekGrid(){
-  // Clear old day-card grid (not used anymore)
   const g=document.getElementById('weekGrid');
   g.innerHTML='';g.style.gridTemplateColumns='';
 
-  // Build pivot table
   const pivot=document.getElementById('weekPivot');
   if(!pivot)return;
 
   const evtColors={Normal:'#059669',Spike:'#dc2626','Spike-1':'#d97706','14th':'#2563eb','15th':'#2563eb','24th':'#7c3aed','25th':'#7c3aed',Sat:'#6b7280',Sun:'#6b7280'};
 
-  // Header rows
   let thead=`<thead>
     <tr class="pw-event">
       <th class="pw-label-col"></th>
@@ -611,7 +684,6 @@ function renderWeekGrid(){
     </tr>
   </thead>`;
 
-  // Summary rows
   const summaryRows=[
     {label:'Inflow', fn:wd=>Math.round(getEff(wd.d).totalInflow).toLocaleString(), cls:'pw-inflow'},
     {label:'Total HC Order (KF)', fn:wd=>getEff(wd.d).weightedHC.toFixed(1), cls:'pw-hc'},
@@ -623,10 +695,8 @@ function renderWeekGrid(){
     tbody+=`<tr class="${r.cls}"><td class="pw-label-col">${r.label}</td>${weekData.map(wd=>`<td>${r.fn(wd)}</td>`).join('')}</tr>`;
   });
 
-  // Section header
   tbody+=`<tr class="pw-section-hdr"><td class="pw-label-col">Breakdown by hour</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
 
-  // Hour rows
   for(let h=0;h<24;h++){
     const cells=weekData.map(wd=>{
       const e=getEff(wd.d);
@@ -640,7 +710,6 @@ function renderWeekGrid(){
 
   pivot.innerHTML=thead+tbody;
 
-  // KPI summary strip (reuse weekKPI)
   const tFT=weekData.reduce((s,w)=>s+getEff(w.d).ft,0);
   const tPT=weekData.reduce((s,w)=>s+getEff(w.d).pt,0);
   const tW=tFT+tPT/2;
@@ -655,7 +724,6 @@ function renderWeekGrid(){
 
   if(weekChart)weekChart.destroy();weekChart=null;
 
-  // AI Insight cho Weekly Overview
   renderAIInsight('week', buildWeekContext());
 }
 
@@ -707,7 +775,6 @@ function renderDayDetail(){
     </tr>`;
   }).join('');
 
-  // AI Insight cho Daily Detail
   renderAIInsight('day', buildDayContext());
 }
 
@@ -718,7 +785,6 @@ function renderShiftBreakdown(){
   if(!weekData[d])return;
   const wd=weekData[d],e=getEff(d);
 
-  // KPI strip for selected day
   document.getElementById('shiftMetrics').innerHTML=`
     <div class="kpi-card"><div class="kpi-label">Total HC Order</div><div class="kpi-value kv-good">${e.weightedHC.toFixed(1)}</div><div class="kpi-sub">FT ${e.ft} · PT ${e.pt} (×½)</div></div>
     <div class="kpi-card"><div class="kpi-label">Fulltime</div><div class="kpi-value" style="color:var(--accent)">${e.ft}</div></div>
@@ -730,13 +796,11 @@ function renderShiftBreakdown(){
     `<strong>${wd.dateStr} · ${DOW_VN[wd.dow]}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;`+
     (coTotal>0?`Carry-over → ${addDays(wd.dateStr,1)}: <span class="carry-tag">${e.carryOut.map((v,h)=>v>0?h+'('+v+')':'').filter(Boolean).join(' ')}</span>`:'No carry-over to next day.');
 
-  // Build full week pivot
   const pivot=document.getElementById('shiftPivot');
   if(!pivot)return;
 
   const evtColors={Normal:'#059669',Spike:'#dc2626','Spike-1':'#d97706','14th':'#2563eb','15th':'#2563eb','24th':'#7c3aed','25th':'#7c3aed',Sat:'#6b7280',Sun:'#6b7280'};
 
-  // Determine which shifts have >0 in ANY day (to hide empty rows)
   const activeShifts=new Set();
   weekData.forEach(w=>{
     const sc=getEff(w.d).shiftCounts;
@@ -752,14 +816,12 @@ function renderShiftBreakdown(){
     <tr class="pw-date"><th class="pw-label-col"></th>${weekData.map(w=>`<th>${w.dateStr}</th>`).join('')}</tr>
   </thead>`;
 
-  // Summary rows
   let tbody=`<tbody>
     <tr class="pw-inflow"><td class="pw-label-col">Inflow</td>${weekData.map(w=>`<td>${Math.round(getEff(w.d).totalInflow).toLocaleString()}</td>`).join('')}</tr>
     <tr class="pw-hc"><td class="pw-label-col">Total HC Order</td>${weekData.map(w=>`<td>${getEff(w.d).weightedHC.toFixed(1)}</td>`).join('')}</tr>
     <tr class="pw-cov"><td class="pw-label-col">%Task Coverage (KF)</td>${weekData.map(w=>{const e2=getEff(w.d);const ok=e2.coverage_pct>=w.eventTarget;return`<td><span style="color:${ok?'var(--success)':'var(--danger)'}">${(e2.coverage_pct*100).toFixed(1)}%</span></td>`;}).join('')}</tr>
     <tr class="pw-section-hdr"><td class="pw-label-col">Breakdown by Shift</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
 
-  // FT section — tiêu đề "F (Fulltime)", số lượng không in đậm
   const activeFT=SHIFTS_FT.filter(s=>activeShifts.has(s.name));
   if(activeFT.length){
     tbody+=`<tr class="pw-shift-group"><td class="pw-label-col pw-shift-type-label">F (Fulltime)</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
@@ -772,7 +834,6 @@ function renderShiftBreakdown(){
     });
   }
 
-  // PT section — số lượng không in đậm
   const activePT=SHIFTS_PT.filter(s=>activeShifts.has(s.name));
   if(activePT.length){
     tbody+=`<tr class="pw-shift-group"><td class="pw-label-col pw-shift-type-label">P (Parttime)</td>${weekData.map(()=>'<td></td>').join('')}</tr>`;
@@ -788,10 +849,8 @@ function renderShiftBreakdown(){
   tbody+=`</tbody>`;
   pivot.innerHTML=thead+tbody;
 
-  // ── HEATMAP: Mật độ nhân sự theo giờ × ngày ──────────────────────────────
   renderShiftHeatmap();
-
-  // ── AI INSIGHT cho Shift Allocation ──────────────────────────────────────
+  renderAbandonWarnings();
   renderAIInsight('shift', buildShiftContext());
 }
 
@@ -800,7 +859,6 @@ function renderShiftHeatmap(){
   const wrap=document.getElementById('shiftHeatmapWrap');
   if(!wrap||!weekData.length)return;
 
-  // Build matrix: rows=hours(0-23), cols=days
   const matrix=Array.from({length:24},(_,h)=>weekData.map(w=>getEff(w.d).coverage[h]||0));
   const maxVal=Math.max(...matrix.flat(),1);
 
@@ -833,7 +891,6 @@ function renderShiftHeatmap(){
   }
   html+=`</tbody></table></div>`;
 
-  // Chú thích
   html+=`<div class="heatmap-legend">
     <span style="font-size:11px;color:#7c84a3;margin-right:12px">Mật độ:</span>
     ${['Low','Medium','High','Peak'].map((lb,i)=>{
@@ -849,22 +906,17 @@ function renderShiftHeatmap(){
 }
 
 // ── WORK MODE LOGIC ───────────────────────────────────────────────────────────
-// WFH: Shift ends after 19:00 OR Fulltime shift starts > 12:00 (i.e. >= 13:00)
 function getShiftEndHour(s){
   if(s.brk!==null){
-    // FT: start + 9 slots (8 giờ làm + 1 giờ nghỉ)
     const endAbs=s.start+9; return endAbs%24;
   } else {
-    // PT: start + 4
     const endAbs=s.start+4; return endAbs%24;
   }
 }
 function isWFH(s){
   const isFT = s.cost===1;
   const endH = getShiftEndHour(s);
-  // Shift ends after 19:00: endH is 20-23, or overnight (0-7)
   const endAfter19 = (endH>=20 && endH<=23) || (endH>=0 && endH<=8);
-  // Ca FT bắt đầu > 12h (bắt đầu từ 13h trở đi)
   if(isFT && (s.start%24) > 12) return true;
   if(endAfter19) return true;
   return false;
@@ -888,7 +940,6 @@ function renderWorkMode(){
   if(!weekData.length)return;
   const data=buildWorkModeData();
 
-  // KPI
   const totalWfh=data.reduce((s,d)=>s+d.wfh,0);
   const totalFloor=data.reduce((s,d)=>s+d.floor,0);
   const pctWfh=totalWfh/(totalWfh+totalFloor||1)*100;
@@ -898,10 +949,8 @@ function renderWorkMode(){
     <div class="kpi-card"><div class="kpi-label">WFH Rate</div><div class="kpi-value" style="color:#2563eb">${pctWfh.toFixed(1)}%</div><div class="kpi-sub">Over total weekly HC</div></div>
     <div class="kpi-card"><div class="kpi-label">Days with WFH</div><div class="kpi-value kv-neutral">${data.filter(d=>d.wfh>0).length}</div><div class="kpi-sub">/ ${data.length} days</div></div>`;
 
-  // Chart — destroy sạch trước khi tạo mới
   if(workChart){workChart.destroy();workChart=null;}
   const wmCanvas=document.getElementById('workModeChart');
-  // Reset canvas để tránh stale context
   const wmParent=wmCanvas.parentNode;
   const wmNew=document.createElement('canvas');
   wmNew.id='workModeChart';
@@ -931,7 +980,6 @@ function renderWorkMode(){
     }
   });
 
-  // Table chi tiết
   document.getElementById('workModeTable').innerHTML=`
     <table class="data-table"><thead><tr>
       <th>Date</th><th>Day</th><th>Event</th>
@@ -1018,7 +1066,12 @@ function buildDayContext(){
   const d=parseInt(document.getElementById('daySelect').value);
   if(!weekData[d])return'No data available.';
   const wd=weekData[d],e=getEff(d);
-  return`Ngày ${wd.dateStr} (${wd.event}): Inflow ${Math.round(wd.inflow).toLocaleString()}, HC ${e.weightedHC.toFixed(1)} (FT ${e.ft} PT ${e.pt}), Coverage ${(e.coverage_pct*100).toFixed(1)}%, Target ${(wd.eventTarget*100).toFixed(1)}%. Hourly coverage: ${e.coverage.map((v,h)=>`${h}h:${v}`).join(',')}`;
+  let ctx=`Ngày ${wd.dateStr} (${wd.event}): Inflow ${Math.round(wd.inflow).toLocaleString()}, HC ${e.weightedHC.toFixed(1)} (FT ${e.ft} PT ${e.pt}), Coverage ${(e.coverage_pct*100).toFixed(1)}%, Target ${(wd.eventTarget*100).toFixed(1)}%. Hourly coverage: ${e.coverage.map((v,h)=>`${h}h:${v}`).join(',')}`;
+  const hist=getLastSameEventHistory(wd.event);
+  if(hist){
+    ctx+=` | Historical reference — last ${wd.event} day (${hist.date}, ${hist.dow}): hourly inflow ${hist.hourly.map((v,h)=>`${h}h:${v}`).join(',')}`;
+  }
+  return ctx;
 }
 function buildShiftContext(){
   if(!weekData.length)return'No data available.';
@@ -1040,7 +1093,7 @@ function buildWorkModeContext(data){
 // ── AI INSIGHT ENGINE ─────────────────────────────────────────────────────────
 const AI_PROMPTS={
   week:'You are a WFM expert in E-commerce. Briefly analyze the following Weekly Overview, highlight the 3 most important insights about HC and coverage, and provide 1-2 specific recommendations. Reply in English, max 200 words.',
-  day:'You are a WFM expert in E-commerce. Analyze the following Daily Detail, identify hours with coverage issues, explain the root cause, and suggest specific shift adjustments. Reply in English, max 200 words.',
+  day:'You are a WFM expert in E-commerce. Analyze the following Daily Detail, identify hours with coverage issues, explain the root cause, and suggest specific shift adjustments. If historical reference data for the same event type is provided in the context, use it to predict which hours are most likely to be peak-inflow hours today, and briefly explain the reasoning. Reply in English, max 200 words.',
   shift:'You are a WFM expert in E-commerce. Analyze the following Shift Allocation structure, evaluate FT/PT distribution, identify common shift patterns, and suggest optimizations. Reply in English, max 200 words.',
   trend:'You are a WFM expert in E-commerce. Analyze the Inflow, HC, and Coverage trends over time, identify patterns, and provide a short-term outlook. Reply in English, max 200 words.',
   workmode:'You are a WFM expert in E-commerce. Analyze the WFH vs On-Floor distribution, assess its appropriateness for operational needs, and recommend adjustments if necessary. Reply in English, max 200 words.'
@@ -1059,7 +1112,6 @@ async function renderAIInsight(tabId, context){
     const data=await resp.json();
     if(!resp.ok) throw new Error(data.error||`HTTP ${resp.status}`);
     const text=data.text||'No response received from AI.';
-    // Nếu là fallback (chưa cấu hình API key) thì hiển thị dạng thông báo nhẹ
     if(data.fallback){
       container.innerHTML=`<div class="ai-insight-fallback"><span style="opacity:.5">✦</span> ${text}</div>`;
       return;
