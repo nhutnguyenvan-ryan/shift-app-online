@@ -74,6 +74,10 @@ body {
   line-height: 1.5;
   min-height: 100vh;
 }
+/* Form controls không tự kế thừa font-family theo mặc định trình duyệt → ép đồng bộ toàn hệ thống */
+button, input, select, textarea, optgroup, option {
+  font-family: inherit;
+}
 
 /* ── AUTH OVERLAY ── */
 .auth-overlay {
