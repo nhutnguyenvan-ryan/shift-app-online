@@ -892,6 +892,7 @@ function renderShiftBreakdown(){
 }
 
 // ── HEATMAP: Mật độ nhân sự theo giờ × ngày ──────────────────────────────────
+// ── HEATMAP: Mật độ nhân sự theo giờ × ngày ──────────────────────────────────
 function renderShiftHeatmap(){
   const wrap=document.getElementById('shiftHeatmapWrap');
   if(!wrap||!weekData.length)return;
@@ -899,13 +900,29 @@ function renderShiftHeatmap(){
   const perDay=weekData.map(w=>getCoverageByType(w.d));
   const colW=Math.max(72, Math.floor((wrap.offsetWidth-70)/Math.max(weekData.length,1)));
 
-  let html=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding:8px 4px;border-bottom:1px solid var(--border)">
-    <span style="font-size:12px;color:var(--text3);font-weight:700;margin-right:8px">Legend</span>
-    <span style="display:inline-flex;align-items:center;gap:8px;margin-right:20px;font-size:13px;color:var(--text2)">
-      <span style="width:18px;height:18px;border-radius:50%;background:#2563eb;display:inline-block"></span> Agent Full-time
+  // Tính mật độ tối đa toàn bảng (FT+PT) để chuẩn hoá heat gradient
+  let maxTotal=0;
+  perDay.forEach(p=>{for(let h=0;h<24;h++){const t=(p.covFT[h]||0)+(p.covPT[h]||0);if(t>maxTotal)maxTotal=t;}});
+  maxTotal=maxTotal||1;
+
+  const ALPHA_MIN=0.04, ALPHA_MAX=0.42;
+  function heatBg(total){
+    if(total<=0)return '#fff';
+    const a=ALPHA_MIN+(total/maxTotal)*(ALPHA_MAX-ALPHA_MIN);
+    return `rgba(37,99,235,${a.toFixed(3)})`;
+  }
+
+  let html=`<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:12px;padding:8px 4px;border-bottom:1px solid var(--border)">
+    <span style="font-size:12px;color:var(--text3);font-weight:700">Legend</span>
+    <span style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text2)">
+      <span style="width:14px;height:14px;border-radius:3px;background:#2563eb;display:inline-block"></span> Full-time
     </span>
-    <span style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">
-      <span style="width:18px;height:18px;border-radius:50%;background:#f59e0b;display:inline-block"></span> Agent Part-time
+    <span style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text2)">
+      <span style="width:14px;height:14px;border-radius:3px;background:#f59e0b;display:inline-block"></span> Part-time
+    </span>
+    <span style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text2)">
+      <span style="width:70px;height:12px;border-radius:3px;background:linear-gradient(90deg, rgba(37,99,235,${ALPHA_MIN}), rgba(37,99,235,${ALPHA_MAX}));border:1px solid var(--border)"></span>
+      Mật độ nhân sự (thấp → cao)
     </span>
   </div>`;
 
@@ -917,16 +934,23 @@ function renderShiftHeatmap(){
   for(let h=0;h<24;h++){
     html+=`<tr><td class="hm-label-col">${String(h).padStart(2,'0')}:00</td>`;
     weekData.forEach((_,di)=>{
-      const ft=perDay[di].covFT[h], pt=perDay[di].covPT[h];
-      let cell='';
-     if(ft>0||pt>0){
-        const parts=[];
-        if(ft>0) parts.push(`<span style="color:#2563eb;font-weight:700">${ft}</span> <span style="color:#2563eb;font-size:17px;vertical-align:middle">●</span>`);
-        if(pt>0) parts.push(`<span style="color:#f59e0b;font-weight:700">${pt}</span> <span style="color:#f59e0b;font-size:17px;vertical-align:middle">●</span>`);
-        cell=parts.join(' <span style="color:#c8ccd8">|</span> ');
+      const ft=perDay[di].covFT[h]||0, pt=perDay[di].covPT[h]||0, total=ft+pt;
+      const bg=heatBg(total);
+      let inner='';
+      if(total>0){
+        const ftPct=(ft/total)*100, ptPct=(pt/total)*100;
+        inner=`<div class="hm-cell">
+          <div class="hm-bar">
+            ${ft>0?`<div class="hm-bar-ft" style="width:${ftPct}%"></div>`:''}
+            ${pt>0?`<div class="hm-bar-pt" style="width:${ptPct}%"></div>`:''}
+          </div>
+          <div class="hm-nums">
+            ${ft>0?`<span class="hm-num-ft">${ft}F</span>`:''}
+            ${pt>0?`<span class="hm-num-pt">${pt}P</span>`:''}
+          </div>
+        </div>`;
       }
-      const bg=(ft+pt)>0?'rgba(37,99,235,.04)':'#fff';
-      html+=`<td style="background:${bg};text-align:center;font-size:11px;font-family:var(--mono);padding:5px 4px;border:1px solid rgba(0,0,0,.05)">${cell}</td>`;
+      html+=`<td style="background:${bg};padding:5px 4px;border:1px solid rgba(0,0,0,.05)" title="${total>0?`FT: ${ft} · PT: ${pt} · Total: ${total}`:'No coverage'}">${inner}</td>`;
     });
     html+=`</tr>`;
   }
@@ -934,7 +958,6 @@ function renderShiftHeatmap(){
 
   wrap.innerHTML=html;
 }
-
 // ── WORK MODE LOGIC ───────────────────────────────────────────────────────────
 function getShiftEndHour(s){
   if(s.brk!==null){
