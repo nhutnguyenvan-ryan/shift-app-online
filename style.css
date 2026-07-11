@@ -740,7 +740,17 @@ button, input, select, textarea, optgroup, option {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
   padding: 10px 4px 4px; margin-top: 8px;
 }
-
+/* ── HEATMAP CELL — mini stacked bar FT/PT ── */
+.hm-cell { display:flex; flex-direction:column; align-items:center; gap:3px; min-width:44px }
+.hm-bar {
+  width: 40px; height: 6px; border-radius: 3px; overflow: hidden;
+  display: flex; background: rgba(0,0,0,.05);
+}
+.hm-bar-ft { background: #2563eb; height: 100% }
+.hm-bar-pt { background: #f59e0b; height: 100% }
+.hm-nums { display: flex; gap: 5px; font-family: var(--mono); font-size: 10px; font-weight: 700 }
+.hm-num-ft { color: #2563eb }
+.hm-num-pt { color: #f59e0b }
 /* ── TREND GRID ── */
 .trend-grid {
   display: grid; grid-template-columns: 1fr;
