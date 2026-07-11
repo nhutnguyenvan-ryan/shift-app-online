@@ -252,12 +252,38 @@ button, input, select, textarea, optgroup, option {
   transition: color .15s, border-color .15s;
   white-space: nowrap;
 }
-.tab-icon { font-size: 12px; opacity: .7 }
+.tab-icon {
+  display: inline-flex; align-items: center; opacity: .55;
+  transition: transform .2s ease, opacity .2s ease;
+}
+.tab-icon svg { display: block }
+.tab:hover .tab-icon { opacity: .9; transform: translateY(-1px) scale(1.08) }
+.tab.active .tab-icon {
+  opacity: 1;
+  animation: tabIconPulse 2.2s ease-in-out infinite;
+}
+@keyframes tabIconPulse {
+  0%, 100% { transform: scale(1) }
+  50%      { transform: scale(1.15) }
+}
 .tab.active {
   color: var(--blue); font-weight: 700;
   border-bottom-color: var(--blue);
 }
-.tab.active .tab-icon { opacity: 1 }
+.tab-icon {
+  display: inline-flex; align-items: center; opacity: .55;
+  transition: transform .2s ease, opacity .2s ease;
+}
+.tab-icon svg { display: block }
+.tab:hover .tab-icon { opacity: .9; transform: translateY(-1px) scale(1.08) }
+.tab.active .tab-icon {
+  opacity: 1;
+  animation: tabIconPulse 2.2s ease-in-out infinite;
+}
+@keyframes tabIconPulse {
+  0%, 100% { transform: scale(1) }
+  50%      { transform: scale(1.15) }
+}
 .tab:hover:not(.active) { color: var(--text2) }
 .section { display: none }
 .section.active { display: block }
