@@ -219,7 +219,7 @@ async function appendSheetRows(spreadsheetId, sheetName, rows) {
   const token = await getServiceAccountToken('https://www.googleapis.com/auth/spreadsheets');
   const { default: fetch } = await import('node-fetch');
 
-  const headerRange = encodeURIComponent(`${sheetName}!1:1`);
+  const headerRange = encodeURIComponent(`${sheetName}!A1:I1`);
   const headerResp = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${headerRange}`,
     { headers: { Authorization: `Bearer ${token}` } }
@@ -248,7 +248,7 @@ async function appendSheetRows(spreadsheetId, sheetName, rows) {
     return (v === undefined || v === null) ? '' : v;
   }));
 
-  const appendRange = encodeURIComponent(`${sheetName}!A:A`);
+  const appendRange = encodeURIComponent(`${sheetName}!A1:I1`);
   const appendResp = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${appendRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     {
