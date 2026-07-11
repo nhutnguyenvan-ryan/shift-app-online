@@ -565,15 +565,17 @@ function calcCarryOut(sc){
 function dailyTask(cov,inflows){let t=0;for(let h=0;h<24;h++)t+=Math.min(cov[h]*HOUR_PROD,inflows[h]);return t;}
 
 // ── PT → FT CONSOLIDATION ────────────────────────────────────────────────────
+// ── PT → FT CONSOLIDATION (CÙNG NGÀY) ────────────────────────────────────────
 const PT_MERGE_RULES = [
-  {a:'P11',b:'P15',ft:'S1'},
+  {a:'P12',b:'P6', ft:'S0'},
+  {a:'P11',b:'P2', ft:'S1'},
   {a:'P10',b:'P15',ft:'S3'},
-  {a:'P11',b:'P8', ft:'S1'},
-  {a:'P1', b:'P13',ft:'S2'},
-  {a:'P6', b:'P13',ft:'S5'},
-  {a:'P7', b:'P13',ft:'S4'},
-  {a:'P12',b:'P10',ft:'S0'},
-  {a:'P2', b:'P14',ft:'S8'},
+  {a:'P7', b:'P8', ft:'S4'},
+  {a:'P2', b:'P14',ft:'S5'},
+  {a:'P15',b:'P4', ft:'S7'},
+  {a:'P8', b:'P16',ft:'S9'},
+  {a:'P13',b:'P17',ft:'S10'},
+  {a:'P14',b:'P9', ft:'S11'},
 ];
 
 function validateMerge(ptA, ptB, ftShift) {
@@ -601,6 +603,64 @@ function consolidatePTtoFT(sc) {
     result[rule.ft] = (result[rule.ft]||0) + pairs;
   }
   return result;
+}
+
+// ── PT → FT CONSOLIDATION (LIÊN NGÀY) ────────────────────────────────────────
+// Ca 'a' được xếp vào ngày D, ca 'b' được xếp vào ngày D+1 (kế tiếp) → gộp thành 1 ca FT ở ngày D.
+// Chạy SAU khi optimize() đã xử lý xong toàn bộ tuần (cần biết shiftCounts của cả 2 ngày liền kề).
+const CROSS_DAY_PT_MERGE_RULES = [
+  {a:'P3', b:'P5', ft:'S12'}, // P3 (19:00-22:59, ngày D) + P5 (0:00-3:49, ngày D+1) → S12
+  {a:'P17',b:'P19',ft:'S6'},  // P17 (22:00 ngày D → 1:59 ngày D+1) + P19 (3:00-6:59, ngày D+1) → S6
+];
+
+function validateCrossDayMerge(ptA, ptB, ftShift){
+  const aHrs  = new Set([...ptA.hrs_today.map(h=>'0_'+h), ...ptA.hrs_next.map(h=>'1_'+h)]);
+  const bHrs  = new Set(ptB.hrs_today.map(h=>'1_'+h));
+  const ftHrs = new Set([...ftShift.hrs_today.map(h=>'0_'+h), ...ftShift.hrs_next.map(h=>'1_'+h)]);
+  const union = new Set([...aHrs, ...bHrs]);
+  let match = 0;
+  union.forEach(h => { if(ftHrs.has(h)) match++; });
+  return match >= Math.min(union.size, ftHrs.size) - 1;
+}
+
+// Tính lại coverage/carryOut/HC của 1 ngày sau khi shiftCounts bị chỉnh bởi cross-day merge
+function recomputeDay(d){
+  const wd=weekData[d], e=wd.opt;
+  e.coverage      = calcCoverage(e.shiftCounts, wd.carryIn);
+  e.carryOut      = calcCarryOut(e.shiftCounts);
+  e.totalInflow    = wd.hourInflows.reduce((a,b)=>a+b,0);
+  e.totalCompleted = dailyTask(e.coverage, wd.hourInflows);
+  e.coverage_pct   = e.totalCompleted/e.totalInflow;
+  e.abandon_pct    = Math.max(0,(e.totalInflow-e.totalCompleted)/e.totalInflow);
+  let ft=0,pt=0;
+  SHIFTS_FT.forEach(s=>ft+=e.shiftCounts[s.name]||0);
+  SHIFTS_PT.forEach(s=>pt+=e.shiftCounts[s.name]||0);
+  e.ft=ft; e.pt=pt; e.weightedHC=ft+pt/2;
+}
+
+// Duyệt qua từng cặp ngày liền kề (D, D+1) trong weekData để tìm cơ hội gộp PT liên ngày
+function applyCrossDayMerges(){
+  for(let d=0; d<weekData.length-1; d++){
+    const dayD=weekData[d].opt, dayD1=weekData[d+1].opt;
+    let changed=false;
+    CROSS_DAY_PT_MERGE_RULES.forEach(rule=>{
+      const ptA=ALL_SHIFTS.find(s=>s.name===rule.a);
+      const ptB=ALL_SHIFTS.find(s=>s.name===rule.b);
+      const ft =ALL_SHIFTS.find(s=>s.name===rule.ft);
+      if(!ptA||!ptB||!ft) return;
+      if(!validateCrossDayMerge(ptA,ptB,ft)) return;
+      const pairs = Math.min(dayD.shiftCounts[rule.a]||0, dayD1.shiftCounts[rule.b]||0);
+      if(pairs<=0) return;
+      dayD.shiftCounts[rule.a]  -= pairs;
+      dayD1.shiftCounts[rule.b] -= pairs;
+      dayD.shiftCounts[rule.ft] = (dayD.shiftCounts[rule.ft]||0) + pairs;
+      changed=true;
+    });
+    if(!changed) continue;
+    recomputeDay(d);
+    weekData[d+1].carryIn = [...dayD.carryOut];   // carryOut mới của ngày D → carryIn của ngày D+1
+    recomputeDay(d+1);
+  }
 }
 
 function optimize(inflows,carryIn,target){
@@ -670,6 +730,7 @@ function calcWeek() {
     weekData.push({d:idx,dateStr:ds,dow,event,inflow,hourInflows,enq,opt,carryIn:[...prevCarryOut],dowLabel:DOW_LABELS[dow],eventTarget});
     prevCarryOut=opt.carryOut; manualShift[idx]=null;
   });
+  applyCrossDayMerges();
   populateSelects(); renderWeekGrid(); renderDayDetail(); renderShiftBreakdown(); renderTrend(); renderWorkMode();
 }
 
