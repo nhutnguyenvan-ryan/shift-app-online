@@ -670,10 +670,14 @@ function optimize(inflows,carryIn,target){
   if(carryIn)for(let h=0;h<24;h++)cov[h]+=carryIn[h]||0;
 
   // MIN STAFFING FLOOR: mỗi ngày tối thiểu 1 nhân sự ca S6 (overnight)
+  // Chỉ ép thêm nếu carry-in từ hôm trước CHƯA đủ phủ ≥1 HC tại cả 2 khung 22h-23h
   const s6=ALL_SHIFTS.find(s=>s.name==='S6');
   if(s6){
-    ac[s6.name]=1;
-    s6.hrs_today.forEach(h=>cov[h]++);
+    const s6CarryOk = s6.hrs_today.every(h=>(cov[h]||0) >= 1);
+    if(!s6CarryOk){
+      ac[s6.name]=1;
+      s6.hrs_today.forEach(h=>cov[h]++);
+    }
   }
 
   for(let iter=0;iter<2000;iter++){
