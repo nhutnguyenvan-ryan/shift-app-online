@@ -606,12 +606,8 @@ function consolidatePTtoFT(sc) {
 }
 
 // ── PT → FT CONSOLIDATION (LIÊN NGÀY) ────────────────────────────────────────
-// Ca 'a' được xếp vào ngày D, ca 'b' được xếp vào ngày D+1 (kế tiếp) → gộp thành 1 ca FT ở ngày D.
-// Chạy SAU khi optimize() đã xử lý xong toàn bộ tuần (cần biết shiftCounts của cả 2 ngày liền kề).
-const CROSS_DAY_PT_MERGE_RULES = [
-  {a:'P3', b:'P5', ft:'S12'}, // P3 (19:00-22:59, ngày D) + P5 (0:00-3:49, ngày D+1) → S12
-  {a:'P17',b:'P19',ft:'S6'},  // P17 (22:00 ngày D → 1:59 ngày D+1) + P19 (3:00-6:59, ngày D+1) → S6
-];
+const CROSS_DAY_S6_RULE  = {a:'P17',b:'P19',ft:'S6'};  // Ưu tiên #1 — tranh P17 với rule cùng-ngày S10
+const CROSS_DAY_S12_RULE = {a:'P3', b:'P5', ft:'S12'}; // Ưu tiên cuối cùng, xử lý sau các rule khác
 
 function validateCrossDayMerge(ptA, ptB, ftShift){
   const aHrs  = new Set([...ptA.hrs_today.map(h=>'0_'+h), ...ptA.hrs_next.map(h=>'1_'+h)]);
@@ -623,11 +619,11 @@ function validateCrossDayMerge(ptA, ptB, ftShift){
   return match >= Math.min(union.size, ftHrs.size) - 1;
 }
 
-// Tính lại coverage/carryOut/HC của 1 ngày sau khi shiftCounts bị chỉnh bởi cross-day merge
+// Tính lại coverage/carryOut/HC của 1 ngày sau khi shiftCounts bị chỉnh sửa bởi merge
 function recomputeDay(d){
   const wd=weekData[d], e=wd.opt;
-  e.coverage      = calcCoverage(e.shiftCounts, wd.carryIn);
-  e.carryOut      = calcCarryOut(e.shiftCounts);
+  e.coverage       = calcCoverage(e.shiftCounts, wd.carryIn);
+  e.carryOut       = calcCarryOut(e.shiftCounts);
   e.totalInflow    = wd.hourInflows.reduce((a,b)=>a+b,0);
   e.totalCompleted = dailyTask(e.coverage, wd.hourInflows);
   e.coverage_pct   = e.totalCompleted/e.totalInflow;
@@ -638,37 +634,48 @@ function recomputeDay(d){
   e.ft=ft; e.pt=pt; e.weightedHC=ft+pt/2;
 }
 
-// Duyệt qua từng cặp ngày liền kề (D, D+1) trong weekData để tìm cơ hội gộp PT liên ngày
-function applyCrossDayMerges(){
+// Gộp 1 rule liên-ngày cho toàn bộ tuần — dùng chung cho cả S6 và S12
+function applyCrossDayRule(rule){
+  const ptA=ALL_SHIFTS.find(s=>s.name===rule.a);
+  const ptB=ALL_SHIFTS.find(s=>s.name===rule.b);
+  const ft =ALL_SHIFTS.find(s=>s.name===rule.ft);
+  if(!ptA||!ptB||!ft) return;
+  if(!validateCrossDayMerge(ptA,ptB,ft)) return;
   for(let d=0; d<weekData.length-1; d++){
     const dayD=weekData[d].opt, dayD1=weekData[d+1].opt;
-    let changed=false;
-    CROSS_DAY_PT_MERGE_RULES.forEach(rule=>{
-      const ptA=ALL_SHIFTS.find(s=>s.name===rule.a);
-      const ptB=ALL_SHIFTS.find(s=>s.name===rule.b);
-      const ft =ALL_SHIFTS.find(s=>s.name===rule.ft);
-      if(!ptA||!ptB||!ft) return;
-      if(!validateCrossDayMerge(ptA,ptB,ft)) return;
-      const pairs = Math.min(dayD.shiftCounts[rule.a]||0, dayD1.shiftCounts[rule.b]||0);
-      if(pairs<=0) return;
-      dayD.shiftCounts[rule.a]  -= pairs;
-      dayD1.shiftCounts[rule.b] -= pairs;
-      dayD.shiftCounts[rule.ft] = (dayD.shiftCounts[rule.ft]||0) + pairs;
-      changed=true;
-    });
-    if(!changed) continue;
+    const pairs = Math.min(dayD.shiftCounts[rule.a]||0, dayD1.shiftCounts[rule.b]||0);
+    if(pairs<=0) continue;
+    dayD.shiftCounts[rule.a]  -= pairs;
+    dayD1.shiftCounts[rule.b] -= pairs;
+    dayD.shiftCounts[rule.ft] = (dayD.shiftCounts[rule.ft]||0) + pairs;
     recomputeDay(d);
     weekData[d+1].carryIn = [...dayD.carryOut];   // carryOut mới của ngày D → carryIn của ngày D+1
     recomputeDay(d+1);
   }
 }
 
+// ── ORCHESTRATOR — thứ tự ưu tiên gộp ca ──────────────────────────────────────
+// (1) Cross-day S6 trước tiên  →  (2) 9 rule cùng-ngày  →  (3) Cross-day S12 sau cùng
+function applyAllMerges(){
+  applyCrossDayRule(CROSS_DAY_S6_RULE);
+  weekData.forEach(w=>{ w.opt.shiftCounts = consolidatePTtoFT(w.opt.shiftCounts); });
+  applyCrossDayRule(CROSS_DAY_S12_RULE);
+  weekData.forEach((w,d)=>recomputeDay(d)); // đồng bộ lại ft/pt/weightedHC toàn tuần
+}
 function optimize(inflows,carryIn,target){
   const totalInflow=inflows.reduce((a,b)=>a+b,0);
   const targetTask=totalInflow*(target!==undefined?target:TARGET);
   const ac={};ALL_SHIFTS.forEach(s=>ac[s.name]=0);
   const cov=new Array(24).fill(0);
   if(carryIn)for(let h=0;h<24;h++)cov[h]+=carryIn[h]||0;
+
+  // MIN STAFFING FLOOR: mỗi ngày tối thiểu 1 nhân sự ca S6 (overnight)
+  const s6=ALL_SHIFTS.find(s=>s.name==='S6');
+  if(s6){
+    ac[s6.name]=1;
+    s6.hrs_today.forEach(h=>cov[h]++);
+  }
+
   for(let iter=0;iter<2000;iter++){
     if(dailyTask(cov,inflows)>=targetTask)break;
     let bSi=-1,bSc=-1;
@@ -680,11 +687,10 @@ function optimize(inflows,carryIn,target){
     if(bSi<0||bSc<=0)break;
     ac[ALL_SHIFTS[bSi].name]++;ALL_SHIFTS[bSi].hrs_today.forEach(h=>cov[h]++);
   }
-  const mergedSc = consolidatePTtoFT(ac);
-  const covMerged = calcCoverage(mergedSc, carryIn);
-  const carryOut=calcCarryOut(mergedSc),completed=dailyTask(covMerged,inflows);
-  let ft=0,pt=0;SHIFTS_FT.forEach(s=>ft+=mergedSc[s.name]);SHIFTS_PT.forEach(s=>pt+=mergedSc[s.name]);
-  return{shiftCounts:mergedSc,coverage:covMerged,carryOut,totalCompleted:completed,totalInflow,
+
+  const carryOut=calcCarryOut(ac),completed=dailyTask(cov,inflows);
+  let ft=0,pt=0;SHIFTS_FT.forEach(s=>ft+=ac[s.name]);SHIFTS_PT.forEach(s=>pt+=ac[s.name]);
+  return{shiftCounts:ac,coverage:cov,carryOut,totalCompleted:completed,totalInflow,
     coverage_pct:completed/totalInflow,abandon_pct:Math.max(0,(totalInflow-completed)/totalInflow),ft,pt,weightedHC:ft+pt/2};
 }
 
@@ -730,7 +736,7 @@ function calcWeek() {
     weekData.push({d:idx,dateStr:ds,dow,event,inflow,hourInflows,enq,opt,carryIn:[...prevCarryOut],dowLabel:DOW_LABELS[dow],eventTarget});
     prevCarryOut=opt.carryOut; manualShift[idx]=null;
   });
-  applyCrossDayMerges();
+  applyAllMerges();
   populateSelects(); renderWeekGrid(); renderDayDetail(); renderShiftBreakdown(); renderTrend(); renderWorkMode();
 }
 
