@@ -867,10 +867,8 @@ function renderDayDetail(){
   const canEdit = currentRole==='owner'||currentRole==='editor';
   document.getElementById('dayTbody').innerHTML=wd.hourInflows.map((inf,h)=>{
     const cov=e.coverage[h]||0,carryH=wd.carryIn[h]||0;
-    const capacity=cov*HOUR_PROD;
-    const task=Math.min(capacity,inf),ab=Math.max(inf-capacity,0);
+    const task=Math.min(cov*HOUR_PROD,inf),ab=Math.max(inf-cov*HOUR_PROD,0);
     const covPct=inf>0?task/inf:1,abPct=inf>0?ab/inf:0;
-    const prodPct=task<=inf?1:(capacity>0?task/capacity:0);
     const kpiOk=covPct>=et;
     const kpi=cov===0&&inf===0?`<span class="badge badge-gray">–</span>`:kpiOk?`<span class="badge badge-green">✓ OK</span>`:covPct>=0.7?`<span class="badge badge-amber">⚠ Low</span>`:`<span class="badge badge-red">✗ Miss</span>`;
     return`<tr>
@@ -880,7 +878,6 @@ function renderDayDetail(){
       <td><span class="badge badge-blue">${cov}</span>${carryH>0?`<span class="carry-tag">+${carryH}↩</span>`:''}</td>
       <td>${Math.round(task).toLocaleString()}</td>
       <td><span class="badge ${covPct>=et?'badge-green':covPct>=0.7?'badge-amber':'badge-red'}">${(covPct*100).toFixed(1)}%</span></td>
-      <td><span class="badge ${prodPct>=0.95?'badge-green':'badge-red'}">${(prodPct*100).toFixed(1)}%</span></td>
       <td><span class="badge ${abPct<1-et?'badge-green':abPct<0.3?'badge-amber':'badge-red'}">${(abPct*100).toFixed(1)}%</span></td>
       <td>${kpi}</td>
     </tr>`;
