@@ -164,6 +164,23 @@ function renderAbandonWarnings(){
     byDay[w.dateStr].hours.push(w);
   });
   const rows=Object.entries(byDay).map(([dateStr,info])=>{
+    const hoursStr=info.hours.map(h=>`<span class="badge badge-red" style="margin-right:4px"><span class="abandon-alert-icon">⚠️</span>${h.hour}h (${h.abandon_pct.toFixed(1)}%)</span>`).join('');
+    return `<tr><td><strong>${info.dowLabel} ${dateStr}</strong></td><td>${hoursStr}</td></tr>`;
+  }).join('');
+  wrap.innerHTML=`<div class="table-card">
+    <div class="table-card-title"><span class="abandon-alert-icon">⚠️</span> Abandon Alerts — Hours Exceeding Target</div>
+    <div class="table-scroll"><table class="data-table">
+      <thead><tr><th>Ngày</th><th>Khung giờ abandon cao</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+  const byDay={};
+  warnings.forEach(w=>{
+    if(!byDay[w.dateStr]) byDay[w.dateStr]={dowLabel:w.dowLabel, hours:[]};
+    byDay[w.dateStr].hours.push(w);
+  });
+  const rows=Object.entries(byDay).map(([dateStr,info])=>{
     const hoursStr=info.hours.map(h=>`<span class="badge badge-red" style="margin-right:4px">${h.hour}h (${h.abandon_pct.toFixed(1)}%)</span>`).join('');
     return `<tr><td><strong>${info.dowLabel} ${dateStr}</strong></td><td>${hoursStr}</td></tr>`;
   }).join('');
@@ -183,8 +200,9 @@ async function exportShiftData() {
     return;
   }
   const btn = document.getElementById('exportBtn');
-  const oldTxt = btn.textContent;
-  btn.disabled = true; btn.textContent = '⏳ Exporting...';
+  const oldHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-export-icon spinning">📤</span> Exporting...';
   try {
     const rows = buildShiftExportRows();
     if (!rows.length) throw new Error('Không có dòng dữ liệu ca nào có nhân sự để export.');
@@ -219,7 +237,7 @@ async function exportShiftData() {
   } catch (err) {
     showExportModal('❌ Export thất bại', err.message, true);
   } finally {
-    btn.disabled = false; btn.textContent = oldTxt;
+    btn.disabled = false; btn.innerHTML = oldHTML;
   }
 }
 function showExportModal(title, msgHtml, isError) {
@@ -382,7 +400,7 @@ function renderPreview(type, rows) {
 function applyAndRun() {
   if(!Object.keys(inflowData).length){document.getElementById('applyStatus').textContent='⚠ No inflow data.';return;}
   document.getElementById('applyStatus').textContent='';
-  calcWeek(); showTab('week');
+  runOptimizer(); showTab('week');
 }
 
 function useSampleData() {
@@ -391,7 +409,7 @@ function useSampleData() {
   setStatus('inflow','✅ Sample data loaded (7 days)','ok');
   setStatus('enqueue','ℹ Using default profiles by event type','ok');
   renderPreview('inflow',Object.entries(inflowData).map(([d,v])=>({Date:d,Inflow:Math.round(v).toLocaleString()})));
-  calcWeek(); showTab('week');
+  runOptimizer(); showTab('week');
 }
 
 function downloadInflowTemplate() {
@@ -723,6 +741,17 @@ function getTargetFor(event){
 }
 
 // ── MAIN CALC ──────────────────────────────────────────────────────────────────
+function runOptimizer(){
+  const btn=document.getElementById('runBtn');
+  if(btn) btn.classList.add('running');
+  setTimeout(()=>{
+    calcWeek();
+    setTimeout(()=>{ if(btn) btn.classList.remove('running'); }, 300);
+  }, 20);
+}
+function kpiAlertIcon(isBad){
+  return isBad ? `<span class="kpi-alert-icon" title="Vượt ngưỡng target">⚠️</span>` : '';
+}
 function calcWeek() {
   updateDerived();
   TARGET = (parseFloat(document.getElementById('targetCov').value)||93)/100;
@@ -827,8 +856,8 @@ function renderWeekGrid(){
   document.getElementById('weekKPI').innerHTML=`
     <div class="kpi-card"><div class="kpi-label">Total HC Order</div><div class="kpi-value kv-neutral">${tW.toFixed(1)}</div><div class="kpi-sub">FT ${tFT} · PT ${tPT} (×½)</div></div>
     <div class="kpi-card"><div class="kpi-label">HC Saved vs 100%</div><div class="kpi-value kv-good">−${(naive-tW).toFixed(1)}</div><div class="kpi-sub">naive baseline ${naive}</div></div>
-    <div class="kpi-card"><div class="kpi-label">Avg Coverage</div><div class="kpi-value ${avgCov>=TARGET?'kv-good':'kv-bad'}">${(avgCov*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(TARGET*100).toFixed(0)}%</div></div>
-    <div class="kpi-card"><div class="kpi-label">Avg Abandon</div><div class="kpi-value ${avgAb<1-TARGET?'kv-good':'kv-bad'}">${(avgAb*100).toFixed(1)}%</div><div class="kpi-sub">target &lt; ${((1-TARGET)*100).toFixed(0)}%</div></div>`;
+    <div class="kpi-card"><div class="kpi-label">Avg Coverage${kpiAlertIcon(avgCov<TARGET)}</div><div class="kpi-value ${avgCov>=TARGET?'kv-good':'kv-bad'}">${(avgCov*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(TARGET*100).toFixed(0)}%</div></div>
+    <div class="kpi-card"><div class="kpi-label">Avg Abandon${kpiAlertIcon(avgAb>=1-TARGET)}</div><div class="kpi-value ${avgAb<1-TARGET?'kv-good':'kv-bad'}">${(avgAb*100).toFixed(1)}%</div><div class="kpi-sub">target &lt; ${((1-TARGET)*100).toFixed(0)}%</div></div>`;
 
   if(weekChart)weekChart.destroy();weekChart=null;
 
@@ -851,12 +880,11 @@ function renderDayDetail(){
   const saved=naive-e.weightedHC;
 
   const et=wd.eventTarget;
-  document.getElementById('dayMetrics').innerHTML=`
+ document.getElementById('dayMetrics').innerHTML=`
     <div class="kpi-card"><div class="kpi-label">Optimized HC</div><div class="kpi-value kv-good">${e.weightedHC.toFixed(1)}</div><div class="kpi-sub">FT ${e.ft} · PT ${e.pt} (×½)</div></div>
     <div class="kpi-card"><div class="kpi-label">HC @ 100% baseline</div><div class="kpi-value kv-dim">${naive}</div><div class="kpi-sub">saved ${saved>0?saved.toFixed(1)+' HC':'–'}</div></div>
-    <div class="kpi-card"><div class="kpi-label">%Task Coverage</div><div class="kpi-value ${e.coverage_pct>=et?'kv-good':'kv-bad'}">${(e.coverage_pct*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(et*100).toFixed(1)}%</div></div>
-    <div class="kpi-card"><div class="kpi-label">%Abandon</div><div class="kpi-value ${e.abandon_pct<1-et?'kv-good':'kv-bad'}">${(e.abandon_pct*100).toFixed(1)}%</div><div class="kpi-sub">daily level</div></div>`;
-
+    <div class="kpi-card"><div class="kpi-label">%Task Coverage${kpiAlertIcon(e.coverage_pct<et)}</div><div class="kpi-value ${e.coverage_pct>=et?'kv-good':'kv-bad'}">${(e.coverage_pct*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(et*100).toFixed(1)}%</div></div>
+    <div class="kpi-card"><div class="kpi-label">%Abandon${kpiAlertIcon(e.abandon_pct>=1-et)}</div><div class="kpi-value ${e.abandon_pct<1-et?'kv-good':'kv-bad'}">${(e.abandon_pct*100).toFixed(1)}%</div><div class="kpi-sub">daily level</div></div>`;
   const enqSrc=enqueueData[wd.dateStr]?'uploaded':'default ('+wd.event+')';
   document.getElementById('dayInfo').innerHTML=
     `<strong>${wd.dateStr} · ${DOW_VN[wd.dow]} · ${wd.event}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
@@ -900,8 +928,7 @@ function renderShiftBreakdown(){
     <div class="kpi-card"><div class="kpi-label">Total HC Order</div><div class="kpi-value kv-good">${e.weightedHC.toFixed(1)}</div><div class="kpi-sub">FT ${e.ft} · PT ${e.pt} (×½)</div></div>
     <div class="kpi-card"><div class="kpi-label">Fulltime</div><div class="kpi-value" style="color:var(--accent)">${e.ft}</div></div>
     <div class="kpi-card"><div class="kpi-label">Parttime</div><div class="kpi-value" style="color:var(--accent2)">${e.pt}</div><div class="kpi-sub">×½ in HC formula</div></div>
-    <div class="kpi-card"><div class="kpi-label">Coverage (daily)</div><div class="kpi-value ${e.coverage_pct>=wd.eventTarget?'kv-good':'kv-bad'}">${(e.coverage_pct*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(wd.eventTarget*100).toFixed(1)}%</div></div>`;
-
+    <div class="kpi-card"><div class="kpi-label">Coverage (daily)${kpiAlertIcon(e.coverage_pct<wd.eventTarget)}</div><div class="kpi-value ${e.coverage_pct>=wd.eventTarget?'kv-good':'kv-bad'}">${(e.coverage_pct*100).toFixed(1)}%</div><div class="kpi-sub">target ≥ ${(wd.eventTarget*100).toFixed(1)}%</div></div>`;
   const coTotal=e.carryOut.reduce((a,b)=>a+b,0);
   document.getElementById('shiftInfo').innerHTML=
     `<strong>${wd.dateStr} · ${DOW_VN[wd.dow]}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;`+
