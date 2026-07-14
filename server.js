@@ -19,7 +19,6 @@ app.set('trust proxy', 1);
 let db = null;
 const memStore = { config: null, editors: [] };
 
-console.log('DATABASE_URL present:', !!process.env.DATABASE_URL);
 if (process.env.DATABASE_URL) {
   db = new Pool({
     connectionString: process.env.DATABASE_URL,
