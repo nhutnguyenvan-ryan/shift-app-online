@@ -79,9 +79,9 @@
     <div class="param-sep"></div>
     <div class="param-actions">
       <button class="btn-outline" id="specialTargetBtn" onclick="toggleSpecialTargets()">🎯 Special Day Targets</button>
-      <button class="btn-run" id="runBtn" onclick="runOptimizer()">
-  <span class="btn-run-icon">▶</span> Run Optimizer
-</button>
+      <button class="btn-run" id="runBtn" onclick="calcWeek()">
+        <span class="btn-run-icon">▶</span> Run Optimizer
+      </button>
       <button class="btn-save hidden" id="saveBtn" onclick="saveConfig()">💾 Save</button>
     </div>
   </div>
@@ -229,7 +229,7 @@
         <select id="shiftDaySelect" onchange="renderShiftBreakdown()" class="day-select"></select>
       </div>
       <button class="btn-outline" onclick="resetShift()">🔄Reset to Optimal</button>
-      <button class="btn-run" id="exportBtn" onclick="exportShiftData()"><span class="btn-export-icon">📤</span> Export to Sheet</button>                                                                   
+      <button class="btn-run" id="exportBtn" onclick="exportShiftData()"> 📤Export to Sheet</button>                                                                   
     </div>
     <div class="kpi-grid" id="shiftMetrics"></div>
     <div class="info-bar" id="shiftInfo"></div>
