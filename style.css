@@ -792,6 +792,40 @@ button, input, select, textarea, optgroup, option {
 /* ── UTILS ── */
 .hidden { display: none !important }
 
+/* ── ANIMATED ICONS ── */
+@keyframes iconSpin {
+  from { transform: rotate(0deg) }
+  to   { transform: rotate(360deg) }
+}
+@keyframes iconShake {
+  0%, 100% { transform: rotate(0deg) }
+  20%  { transform: rotate(-12deg) }
+  40%  { transform: rotate(10deg) }
+  60%  { transform: rotate(-8deg) }
+  80%  { transform: rotate(6deg) }
+}
+@keyframes iconBlink {
+  0%, 100% { opacity: 1; transform: scale(1) }
+  50%      { opacity: .45; transform: scale(1.15) }
+}
+
+.btn-run-icon { display: inline-flex; transition: transform .2s }
+.btn-run.running .btn-run-icon { animation: iconSpin .9s linear infinite }
+
+.btn-export-icon { display: inline-flex; transition: transform .2s }
+#exportBtn:hover .btn-export-icon:not(.spinning) { animation: iconShake .5s ease }
+.btn-export-icon.spinning { animation: iconSpin .8s linear infinite }
+
+.kpi-alert-icon {
+  display: inline-block; margin-left: 5px; font-size: 11px;
+  animation: iconBlink 1.3s ease-in-out infinite;
+}
+
+.abandon-alert-icon {
+  display: inline-block; margin-right: 3px;
+  animation: iconBlink 1.3s ease-in-out infinite;
+}
+
 /* ── RESPONSIVE ── */
 @media (max-width: 1024px) {
   .kpi-grid { grid-template-columns: repeat(2,1fr) }
