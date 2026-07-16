@@ -1365,6 +1365,19 @@ function resetShift(){
   manualShift[d]=null; renderShiftBreakdown(); renderWeekGrid();
 }
 
+function toggleTableCard(titleEl){
+  const card=titleEl.closest('.table-card');
+  if(card)card.classList.toggle('collapsed');
+}
+function toggleAllTableCards(){
+  const cards=document.querySelectorAll('.table-card');
+  if(!cards.length)return;
+  const anyExpanded=[...cards].some(c=>!c.classList.contains('collapsed'));
+  cards.forEach(c=>c.classList.toggle('collapsed',anyExpanded));
+  const btn=document.getElementById('collapseAllBtn');
+  if(btn)btn.textContent=anyExpanded?'⬍ Expand All':'⬍ Collapse All';
+}
+
 function showTab(name){
   const names=['data','week','day','shift','trend','workmode'];
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
