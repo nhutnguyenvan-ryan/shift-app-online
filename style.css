@@ -543,7 +543,18 @@ button, input, select, textarea, optgroup, option {
   font-weight: 700; color: var(--text2);
   padding: 13px 18px; border-bottom: 1px solid var(--border);
   background: var(--surface2);
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; user-select: none; transition: background .15s;
 }
+.table-card-title:hover { background: var(--surface3) }
+.table-card-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; flex-shrink: 0;
+  color: var(--text3); transition: transform .2s ease;
+}
+.table-card-toggle svg { display: block }
+.table-card.collapsed .table-card-toggle { transform: rotate(-90deg) }
+.table-card.collapsed .table-scroll { display: none }
 .table-scroll { overflow-x: auto; max-height: 420px; overflow-y: auto }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px }
 .data-table th {
