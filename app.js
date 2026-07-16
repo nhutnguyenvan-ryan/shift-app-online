@@ -1218,12 +1218,66 @@ function buildDayContext(){
   }
   return ctx;
 }
+// ── SENSITIVITY ANALYSIS — mô phỏng %Task Coverage khi Inflow tăng/giảm ─────
+// Tăng Inflow: giữ nguyên cơ cấu ca hiện tại (không thêm nhân sự) → xem coverage tụt bao nhiêu.
+// Giảm Inflow: chạy lại optimize() ở mức inflow thấp hơn (cùng carry-in, cùng target) để tìm
+// cơ cấu ca tối thiểu vẫn đạt target, rồi so sánh với cơ cấu hiện tại để gợi ý ca có thể cắt.
+function buildShiftSensitivityContext(d){
+  const wd=weekData[d], e=getEff(d);
+  const et=wd.eventTarget;
+
+  const incResults=[0.10,0.15,0.20,0.50].map(pct=>{
+    const mult=1+pct;
+    let completed=0,totalInflow=0;
+    wd.hourInflows.forEach((inf,h)=>{
+      const scaledInf=inf*mult;
+      const cap=(e.coverage[h]||0)*HOUR_PROD;
+      completed+=Math.min(cap,scaledInf);
+      totalInflow+=scaledInf;
+    });
+    const covPct=totalInflow>0?completed/totalInflow:1;
+    return{pct:+(pct*100).toFixed(0),covPct:+(covPct*100).toFixed(1),meetsTarget:covPct>=et};
+  });
+
+  const decResults=[0.10,0.15,0.20,0.50].map(pct=>{
+    const mult=1-pct;
+    const scaledInflows=wd.hourInflows.map(v=>v*mult);
+    const reOpt=optimize(scaledInflows,wd.carryIn,et);
+    const cuts=[];
+    ALL_SHIFTS.forEach(s=>{
+      const cur=e.shiftCounts[s.name]||0;
+      const need=reOpt.shiftCounts[s.name]||0;
+      if(cur>need)cuts.push(`${s.name}:-${cur-need}`);
+    });
+    return{
+      pct:+(pct*100).toFixed(0),
+      newHC:+reOpt.weightedHC.toFixed(1),
+      hcSaved:+(e.weightedHC-reOpt.weightedHC).toFixed(1),
+      covPct:+(reOpt.coverage_pct*100).toFixed(1),
+      cuts:cuts.length?cuts.join(', '):'No cut needed'
+    };
+  });
+
+  return{incResults,decResults};
+}
+
 function buildShiftContext(){
   if(!weekData.length)return'No data available.';
   const activeShifts=new Set();
   weekData.forEach(w=>{const sc=getEff(w.d).shiftCounts;ALL_SHIFTS.forEach(s=>{if((sc[s.name]||0)>0)activeShifts.add(s.name);});});
   const summary=weekData.map(w=>{const sc=getEff(w.d).shiftCounts;const shifts=[...activeShifts].filter(n=>sc[n]>0).map(n=>`${n}:${sc[n]}`).join(',');return`[${w.dateStr}] ${shifts}`;}).join(' | ');
-  return`Shift Allocation — Active shifts: ${[...activeShifts].join(',')}. Daily breakdown: ${summary}`;
+
+  const d=parseInt(document.getElementById('shiftDaySelect').value);
+  let sensText='';
+  if(weekData[d]){
+    const wd=weekData[d];
+    const{incResults,decResults}=buildShiftSensitivityContext(d);
+    sensText=` | Sensitivity analysis for ${wd.dateStr} (${wd.event}), Coverage Target ${(wd.eventTarget*100).toFixed(1)}%, current staffing kept fixed for increase scenarios: `+
+      incResults.map(r=>`+${r.pct}% Inflow → Coverage ${r.covPct}% (${r.meetsTarget?'meets':'misses'} target)`).join(', ')+
+      `. Suggested cuts (re-optimized at lower Inflow) to still meet target if Inflow decreases: `+
+      decResults.map(r=>`-${r.pct}% Inflow → cuts: ${r.cuts} (resulting HC ${r.newHC}, saved ${r.hcSaved} HC, Coverage ${r.covPct}%)`).join(', ');
+  }
+  return`Shift Allocation — Active shifts: ${[...activeShifts].join(',')}. Daily breakdown: ${summary}${sensText}`;
 }
 function buildTrendContext(){
   if(!weekData.length)return'No data available.';
@@ -1239,7 +1293,7 @@ function buildWorkModeContext(data){
 const AI_PROMPTS={
   week:'You are a WFM expert in E-commerce. Briefly analyze the following Weekly Overview, highlight the 3 most important insights about HC and coverage, and provide 1-2 specific recommendations. Reply in English, max 200 words.',
   day:'You are a WFM expert in E-commerce. Analyze the following Daily Detail, identify hours with coverage issues, explain the root cause, and suggest specific shift adjustments. If historical reference data for the same event type is provided in the context, use it to predict which hours are most likely to be peak-inflow hours today, and briefly explain the reasoning. Reply in English, max 200 words.',
-  shift:'You are a WFM expert in E-commerce. Analyze the following Shift Allocation structure, evaluate FT/PT distribution, identify common shift patterns, and suggest optimizations. Reply in English, max 200 words.',
+  shift:'You are a WFM expert in E-commerce. Using the Shift Allocation structure and the sensitivity analysis data provided, address exactly 3 points concisely: (1) Explain why this HC allocation was chosen, with its main advantages and limitations; (2) Summarize how %Task Coverage would change if actual Inflow increases by 10%, 15%, 20%, and 50% versus the current fixed schedule; (3) Based on the suggested-cuts data, recommend which shifts and how many staff could be reduced for each scenario where Inflow decreases by 10%, 15%, 20%, and 50%, while still meeting the Coverage Target. Reply in English, max 280 words.',
   trend:'You are a WFM expert in E-commerce. Analyze the Inflow, HC, and Coverage trends over time, identify patterns, and provide a short-term outlook. Reply in English, max 200 words.',
   workmode:'You are a WFM expert in E-commerce. Analyze the WFH vs On-Floor distribution, assess its appropriateness for operational needs, and recommend adjustments if necessary. Reply in English, max 200 words.'
 };
