@@ -867,10 +867,11 @@ function renderDayDetail(){
   const canEdit = currentRole==='owner'||currentRole==='editor';
   document.getElementById('dayTbody').innerHTML=wd.hourInflows.map((inf,h)=>{
     const cov=e.coverage[h]||0,carryH=wd.carryIn[h]||0;
-    const capacity=cov*HOUR_PROD;
-    const task=Math.min(capacity,inf),ab=Math.max(inf-capacity,0);
+    // Hourly Agent Capacity = Hourly HC Order (cov) × Hourly Prod (HOUR_PROD)
+    const agentCapacity=cov*HOUR_PROD;
+    const task=Math.min(agentCapacity,inf),ab=Math.max(inf-agentCapacity,0);
     const covPct=inf>0?task/inf:1,abPct=inf>0?ab/inf:0;
-    const prodPct=task<=inf?1:(capacity>0?task/capacity:0);
+    const prodPct=task<=inf?1:(agentCapacity>0?task/agentCapacity:0);
     const kpiOk=covPct>=et;
     const kpi=cov===0&&inf===0?`<span class="badge badge-gray">–</span>`:kpiOk?`<span class="badge badge-green">✓ OK</span>`:covPct>=0.7?`<span class="badge badge-amber">⚠ Low</span>`:`<span class="badge badge-red">✗ Miss</span>`;
     return`<tr>
