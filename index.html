@@ -189,7 +189,10 @@
     <div class="kpi-grid" id="weekKPI"></div>
     <div id="weekGrid"></div>
     <div class="table-card">
-      <div class="table-card-title">Optimized HC Order by Day — Breakdown by Hour</div>
+      <div class="table-card-title" onclick="toggleTableCard(this)">
+        <span>Optimized HC Order by Day — Breakdown by Hour</span>
+        <span class="table-card-toggle"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </div>
       <div class="table-scroll">
         <table class="data-table pivot-week" id="weekPivot"></table>
       </div>
@@ -207,7 +210,10 @@
     <div class="kpi-grid" id="dayMetrics"></div>
     <div class="info-bar" id="dayInfo"></div>
     <div class="table-card">
-      <div class="table-card-title">Hourly Breakdown — Optimized HC</div>
+      <div class="table-card-title" onclick="toggleTableCard(this)">
+        <span>Hourly Breakdown — Optimized HC</span>
+        <span class="table-card-toggle"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </div>
       <div class="table-scroll">
         <table class="data-table">
           <thead><tr>
@@ -234,7 +240,10 @@
     <div class="kpi-grid" id="shiftMetrics"></div>
     <div class="info-bar" id="shiftInfo"></div>
     <div class="table-card">
-      <div class="table-card-title">Optimized HC Order by Day — Breakdown by Shift</div>
+      <div class="table-card-title" onclick="toggleTableCard(this)">
+        <span>Optimized HC Order by Day — Breakdown by Shift</span>
+        <span class="table-card-toggle"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </div>
       <div class="table-scroll">
         <table class="data-table pivot-week" id="shiftPivot"></table>
       </div>
@@ -273,7 +282,10 @@
       <div class="chart-wrap" style="height:260px"><canvas id="workModeChart"></canvas></div>
     </div>
     <div class="table-card">
-      <div class="table-card-title">Daily Breakdown</div>
+      <div class="table-card-title" onclick="toggleTableCard(this)">
+        <span>Daily Breakdown</span>
+        <span class="table-card-toggle"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </div>
       <div class="table-scroll" id="workModeTable"></div>
     </div>
     <div id="aiInsight-workmode" class="ai-insight-wrap"></div>
