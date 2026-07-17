@@ -19,6 +19,12 @@ app.set('trust proxy', 1);
 let db = null;
 const memStore = { config: null, editors: [] };
 
+// Cache kết quả AI Insight trong ngày — tránh gọi lại Groq API khi user chỉ chuyển
+// qua lại giữa các tab mà dữ liệu (context) không đổi. Key tự invalidate khi
+// context thay đổi hoặc sang ngày mới, nên không cần logic xoá cache thủ công.
+const aiInsightCache = new Map(); // key: sha256(date|tabId|context) → { text, ts }
+const AI_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
 if (process.env.DATABASE_URL) {
   db = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -428,7 +434,18 @@ app.post('/api/ai-insight', async (req, res) => {
   const isHeavy = HEAVY_TABS.has(tabId);
   const model = isHeavy ? HEAVY_MODEL : LIGHT_MODEL;
   // max_tokens theo mức độ quan trọng: tab nhẹ (week/trend/workmode) chỉ cần tóm tắt ngắn → cắt xuống 250
+  // max_tokens theo mức độ quan trọng: tab nhẹ (week/trend/workmode) chỉ cần tóm tắt ngắn → cắt xuống 250
   const maxTokens = isHeavy ? 400 : 250;
+
+  // Kiểm tra cache trước khi gọi Groq — key gồm ngày hiện tại + tabId + hash context.
+  const crypto = require('crypto');
+  const today = new Date().toISOString().slice(0, 10);
+  const cacheKey = crypto.createHash('sha256').update(`${today}|${tabId}|${context}`).digest('hex');
+  const cached = aiInsightCache.get(cacheKey);
+  if (cached && (Date.now() - cached.ts) < AI_CACHE_TTL_MS) {
+    console.log(`ai-insight | cache HIT tab:${tabId}`);
+    return res.json({ text: cached.text, cached: true });
+  }
 
   try {
     const { default: fetch } = await import('node-fetch');
@@ -464,6 +481,7 @@ app.post('/api/ai-insight', async (req, res) => {
 
     const data = await upstream.json();
     const text = data.choices?.[0]?.message?.content?.trim() || 'No response from AI.';
+    aiInsightCache.set(cacheKey, { text, ts: Date.now() });
     res.json({ text });
   } catch (err) {
     console.error('AI insight error:', err.message);
