@@ -887,7 +887,7 @@ function renderDayDetail(){
     </tr>`;
   }).join('');
 
-  renderAIInsight('day', buildDayContext());
+  showAIInsightPrompt('day');
 }
 
 // ── RENDER SHIFT PIVOT ────────────────────────────────────────────────────────
@@ -963,7 +963,7 @@ function renderShiftBreakdown(){
 
   renderShiftHeatmap();
   renderAbandonWarnings();
-  renderAIInsight('shift', buildShiftContext());
+  showAIInsightPrompt('shift');
 }
 
 // ── HEATMAP: Mật độ nhân sự theo giờ × ngày ──────────────────────────────────
@@ -1322,6 +1322,16 @@ const AI_PROMPTS={
 };
 
 const _aiInsightTimers = {};
+// Với tab tốn nhiều token (Day/Shift), không tự động gọi API — hiển thị nút để user chủ động bấm khi cần.
+function showAIInsightPrompt(tabId){
+  const container=document.getElementById(`aiInsight-${tabId}`);
+  if(!container)return;
+  container.innerHTML=`<button class="btn-outline" onclick="triggerManualInsight('${tabId}')">✦ Generate AI Insight</button>`;
+}
+function triggerManualInsight(tabId){
+  const contextFn = tabId==='shift' ? buildShiftContext : buildDayContext;
+  _fetchAIInsight(tabId, contextFn());
+}
 function renderAIInsight(tabId, context){
   const container=document.getElementById(`aiInsight-${tabId}`);
   if(!container)return;
