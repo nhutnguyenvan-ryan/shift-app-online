@@ -408,7 +408,7 @@ app.post('/api/export-shift', async (req, res) => {
 
 // ── API: AI INSIGHT — via Groq API (OpenAI-compatible, free tier) ─────────────
 app.post('/api/ai-insight', async (req, res) => {
-  const { prompt, context } = req.body;
+  const { prompt, context, tabId } = req.body;
   if (!prompt || !context) return res.status(400).json({ error: 'Missing prompt or context' });
 
   const groqKey = process.env.GROQ_API_KEY;
@@ -419,7 +419,13 @@ app.post('/api/ai-insight', async (req, res) => {
     });
   }
 
-  const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  // Phân bổ model theo mức độ quan trọng của từng tab để tiết kiệm quota TPD:
+  // - shift/day: cần suy luận sâu (sensitivity analysis, root-cause theo giờ) → giữ model 70B
+  // - week/trend/workmode: tổng hợp/tóm tắt đơn giản → dùng model 8B nhẹ hơn, tốn ít token hơn
+  const LIGHT_MODEL = process.env.GROQ_MODEL_LIGHT || 'llama-3.1-8b-instant';
+  const HEAVY_MODEL = process.env.GROQ_MODEL_HEAVY || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  const HEAVY_TABS = new Set(['shift', 'day']);
+  const model = HEAVY_TABS.has(tabId) ? HEAVY_MODEL : LIGHT_MODEL;
 
   try {
     const { default: fetch } = await import('node-fetch');
