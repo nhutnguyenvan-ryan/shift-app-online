@@ -425,7 +425,10 @@ app.post('/api/ai-insight', async (req, res) => {
   const LIGHT_MODEL = process.env.GROQ_MODEL_LIGHT || 'llama-3.1-8b-instant';
   const HEAVY_MODEL = process.env.GROQ_MODEL_HEAVY || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
   const HEAVY_TABS = new Set(['shift', 'day']);
-  const model = HEAVY_TABS.has(tabId) ? HEAVY_MODEL : LIGHT_MODEL;
+  const isHeavy = HEAVY_TABS.has(tabId);
+  const model = isHeavy ? HEAVY_MODEL : LIGHT_MODEL;
+  // max_tokens theo mức độ quan trọng: tab nhẹ (week/trend/workmode) chỉ cần tóm tắt ngắn → cắt xuống 250
+  const maxTokens = isHeavy ? 400 : 250;
 
   try {
     const { default: fetch } = await import('node-fetch');
@@ -435,9 +438,9 @@ app.post('/api/ai-insight', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${groqKey}`
       },
-      body: JSON.stringify({
+     body: JSON.stringify({
         model,
-        max_tokens: 400,
+        max_tokens: maxTokens,
         temperature: 0.5,
         messages: [
           {
