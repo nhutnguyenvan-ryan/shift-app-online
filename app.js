@@ -1248,7 +1248,7 @@ function buildShiftSensitivityContext(d){
   const et=wd.eventTarget;
   const totalInflow=wd.hourInflows.reduce((a,b)=>a+b,0);
 
-  const incResults=[0.10,0.15,0.20,0.50].map(pct=>{
+  const incResults=[0.15,0.50].map(pct=>{
     const mult=1+pct;
     const scaledInflows=wd.hourInflows.map(v=>v*mult);
     const scaledTotal=totalInflow*mult;
@@ -1279,7 +1279,7 @@ function buildShiftSensitivityContext(d){
     };
   });
 
-  const decResults=[0.10,0.15,0.20,0.50].map(pct=>{
+  const decResults=[0.15,0.50].map(pct=>{
     const mult=1-pct;
     const scaledInflows=wd.hourInflows.map(v=>v*mult);
     const scaledTotal=totalInflow*mult;
@@ -1321,7 +1321,17 @@ const AI_PROMPTS={
   workmode:'You are a WFM expert in E-commerce. Analyze the WFH vs On-Floor distribution, assess its appropriateness for operational needs, and recommend adjustments if necessary. Reply in English, max 200 words.'
 };
 
-async function renderAIInsight(tabId, context){
+const _aiInsightTimers = {};
+function renderAIInsight(tabId, context){
+  const container=document.getElementById(`aiInsight-${tabId}`);
+  if(!container)return;
+  container.innerHTML=`<div class="ai-insight-loading"><span class="ai-spinner"></span> Waiting for changes to settle...</div>`;
+  // Debounce: gộp các lần gọi liên tiếp (đổi ngày, sửa ca thủ công, chạy lại optimizer)
+  // trong vòng 1.2s thành 1 lần gọi API duy nhất — giảm mạnh số request/token tốn ra.
+  clearTimeout(_aiInsightTimers[tabId]);
+  _aiInsightTimers[tabId] = setTimeout(() => _fetchAIInsight(tabId, context), 1200);
+}
+async function _fetchAIInsight(tabId, context){
   const container=document.getElementById(`aiInsight-${tabId}`);
   if(!container)return;
   container.innerHTML=`<div class="ai-insight-loading"><span class="ai-spinner"></span> AI is analyzing data...</div>`;
