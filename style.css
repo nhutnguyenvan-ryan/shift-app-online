@@ -189,7 +189,14 @@ button, input, select, textarea, optgroup, option {
   font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
   color: var(--text3); font-weight: 600; white-space: nowrap;
 }
-.param-unit { color: var(--text4); font-size: 9px; font-style: normal }
+.param-unit {
+  color: var(--text4);
+  font-size: 9px;
+  font-style: normal;
+  text-transform: none;
+}
+.param-unit::before { content: "(" }
+.param-unit::after  { content: ")" }
 .param-group input {
   height: 30px; width: 78px; padding: 0 8px;
   font-size: 13px; font-weight: 600;
