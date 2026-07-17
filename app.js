@@ -150,11 +150,12 @@ function buildAbandonWarnings(){
 function renderAbandonWarnings(){
   const wrap=document.getElementById('abandonWarningsWrap');
   if(!wrap)return;
+  const toggleIcon=`<span class="table-card-toggle"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>`;
   const warnings=buildAbandonWarnings();
   if(!warnings.length){
     wrap.innerHTML=`<div class="table-card">
-      <div class="table-card-title">⚠️ Abandon Alerts — Hours Exceeding Target</div>
-      <div style="padding:14px 18px;font-size:12px;color:var(--text3)">Không có khung giờ nào vượt target Abandon trong tuần này.</div>
+      <div class="table-card-title" onclick="toggleTableCard(this)"><span>⚠️ Abandon Alerts — Hours Exceeding Target</span>${toggleIcon}</div>
+      <div class="table-scroll"><div style="padding:14px 18px;font-size:12px;color:var(--text3)">Không có khung giờ nào vượt target Abandon trong tuần này.</div></div>
     </div>`;
     return;
   }
@@ -168,14 +169,13 @@ function renderAbandonWarnings(){
     return `<tr><td><strong>${info.dowLabel} ${dateStr}</strong></td><td>${hoursStr}</td></tr>`;
   }).join('');
   wrap.innerHTML=`<div class="table-card">
-    <div class="table-card-title">⚠️ Abandon Alerts — Hours Exceeding Target</div>
+    <div class="table-card-title" onclick="toggleTableCard(this)"><span>⚠️ Abandon Alerts — Hours Exceeding Target</span>${toggleIcon}</div>
     <div class="table-scroll"><table class="data-table">
       <thead><tr><th>Ngày</th><th>Khung giờ abandon cao</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
   </div>`;
 }
-
 // ── EXPORT SHIFT DATA + ABANDON WARNINGS → Google Sheet ───────────────────────
 async function exportShiftData() {
   if (!weekData.length) {
