@@ -435,7 +435,7 @@ app.post('/api/ai-insight', async (req, res) => {
   const model = isHeavy ? HEAVY_MODEL : LIGHT_MODEL;
   // max_tokens theo mức độ quan trọng: tab nhẹ (week/trend/workmode) chỉ cần tóm tắt ngắn → cắt xuống 250
   // max_tokens theo mức độ quan trọng: tab nhẹ (week/trend/workmode) chỉ cần tóm tắt ngắn → cắt xuống 250
-  const maxTokens = isHeavy ? 300 : 250;
+  const maxTokens = isHeavy ? 600 : 250;
 
   // Kiểm tra cache trước khi gọi Groq — key gồm ngày hiện tại + tabId + hash context.
   const crypto = require('crypto');
