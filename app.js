@@ -642,6 +642,8 @@ function applyCrossDayRule(rule){
   if(!ptA||!ptB||!ft) return;
   if(!validateCrossDayMerge(ptA,ptB,ft)) return;
   for(let d=0; d<weekData.length-1; d++){
+    // Chủ Nhật: không được tạo carry-over sang thứ Hai — bỏ qua merge liên-ngày khi ngày nguồn (D) là Sun.
+    if(weekData[d].event==='Sun') continue;
     const dayD=weekData[d].opt, dayD1=weekData[d+1].opt;
     const pairs = Math.min(dayD.shiftCounts[rule.a]||0, dayD1.shiftCounts[rule.b]||0);
     if(pairs<=0) continue;
@@ -662,17 +664,21 @@ function applyAllMerges(){
   applyCrossDayRule(CROSS_DAY_S12_RULE);
   weekData.forEach((w,d)=>recomputeDay(d)); // đồng bộ lại ft/pt/weightedHC toàn tuần
 }
-function optimize(inflows,carryIn,target){
+// THAY BẰNG:
+function optimize(inflows,carryIn,target,eventType){
   const totalInflow=inflows.reduce((a,b)=>a+b,0);
   const targetTask=totalInflow*(target!==undefined?target:TARGET);
   const ac={};ALL_SHIFTS.forEach(s=>ac[s.name]=0);
   const cov=new Array(24).fill(0);
   if(carryIn)for(let h=0;h<24;h++)cov[h]+=carryIn[h]||0;
 
+  const isSun = eventType==='Sun';
+
   // MIN STAFFING FLOOR: mỗi ngày tối thiểu 1 nhân sự ca S6 (overnight)
   // Chỉ ép thêm nếu carry-in từ hôm trước CHƯA đủ phủ ≥1 HC tại cả 2 khung 22h-23h
+  // Chủ Nhật: bỏ qua floor này vì S6 carry-over sang thứ Hai — không được phép.
   const s6=ALL_SHIFTS.find(s=>s.name==='S6');
-  if(s6){
+  if(s6 && !isSun){
     const s6CarryOk = s6.hrs_today.every(h=>(cov[h]||0) >= 1);
     if(!s6CarryOk){
       ac[s6.name]=1;
@@ -684,7 +690,10 @@ function optimize(inflows,carryIn,target){
     if(dailyTask(cov,inflows)>=targetTask)break;
     let bSi=-1,bSc=-1;
     for(let si=0;si<ALL_SHIFTS.length;si++){
-      const s=ALL_SHIFTS[si];let gain=0;
+      const s=ALL_SHIFTS[si];
+      // Chủ Nhật: loại các ca có carry-over (hrs_next) — không xếp ca kéo sang thứ Hai.
+      if(isSun && s.hrs_next.length>0) continue;
+      let gain=0;
       s.hrs_today.forEach(h=>{const cap=cov[h]*HOUR_PROD;if(cap<inflows[h])gain+=Math.min(HOUR_PROD,inflows[h]-cap);});
       const sc=gain/s.cost;if(sc>bSc){bSc=sc;bSi=si;}
     }
@@ -736,7 +745,7 @@ function calcWeek() {
     const sum=enq.reduce((a,b)=>a+b,0);if(sum>0)enq=enq.map(v=>v/sum);
     const hourInflows=enq.map(p=>inflow*p);
     const eventTarget=getTargetFor(event);
-    const opt=optimize(hourInflows,prevCarryOut,eventTarget);
+    const opt=optimize(hourInflows,prevCarryOut,eventTarget,event);
     weekData.push({d:idx,dateStr:ds,dow,event,inflow,hourInflows,enq,opt,carryIn:[...prevCarryOut],dowLabel:DOW_LABELS[dow],eventTarget});
     prevCarryOut=opt.carryOut; manualShift[idx]=null;
   });
@@ -1260,7 +1269,7 @@ function buildShiftSensitivityContext(d){
     });
     const covPctFixed=scaledTotal>0?completed/scaledTotal:1;
 
-    const reOpt=optimize(scaledInflows,wd.carryIn,et);
+    const reOpt=optimize(scaledInflows,wd.carryIn,et,wd.event);
     const adds=[];
     ALL_SHIFTS.forEach(s=>{
       const cur=e.shiftCounts[s.name]||0;
@@ -1283,7 +1292,7 @@ function buildShiftSensitivityContext(d){
     const mult=1-pct;
     const scaledInflows=wd.hourInflows.map(v=>v*mult);
     const scaledTotal=totalInflow*mult;
-    const reOpt=optimize(scaledInflows,wd.carryIn,et);
+    const reOpt=optimize(scaledInflows,wd.carryIn,et,wd.event);
     const cuts=[];
     ALL_SHIFTS.forEach(s=>{
       const cur=e.shiftCounts[s.name]||0;
