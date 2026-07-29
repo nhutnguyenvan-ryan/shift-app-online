@@ -1,32 +1,32 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   ShiftIQ Design System — Professional WFM Tool
-   Theme: Clean white, structured, enterprise-grade
+   ShiftIQ Design System — Shopee WFM AI Suite Style
+   Theme: Shopee Orange × Navy, đồng bộ với WFM Internal Tool Portal
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── TOKENS ─────────────────────────────────────────────────────────────── */
 :root {
   /* Surface */
-  --bg:       #f8f9fc;
+  --bg:       #FAFBFD;
   --surface:  #ffffff;
-  --surface2: #f1f3f8;
-  --surface3: #e8ebf3;
-  --surface4: #dde1ed;
+  --surface2: #FFF1EC;
+  --surface3: #FDF7F5;
+  --surface4: #EAF0FB;
 
   /* Border */
-  --border:   rgba(30,40,80,.09);
-  --border2:  rgba(30,40,80,.16);
-  --border3:  rgba(30,40,80,.24);
+  --border:   rgba(17,51,102,.09);
+  --border2:  rgba(17,51,102,.16);
+  --border3:  rgba(17,51,102,.24);
 
   /* Text */
-  --text:     #0a0f1f;
-  --text2:    #232b45;
-  --text3:    #565f7e;
-  --text4:    #8890ab;
+  --text:     #0F1222;
+  --text2:    #3D4257;
+  --text3:    #7A7F99;
+  --text4:    #A7ABC2;
 
-  /* Brand */
-  --blue:     #2563eb;
-  --blue-lt:  #eff4ff;
-  --blue-md:  #dbeafe;
+  /* Brand — Shopee Orange × Navy */
+  --blue:     #113366;
+  --blue-lt:  #EAF0FB;
+  --blue-md:  #D7E2F5;
   --green:    #059669;
   --green-lt: #ecfdf5;
   --red:      #dc2626;
@@ -36,8 +36,13 @@
   --purple:   #7c3aed;
   --purple-lt:#f5f3ff;
 
+  /* Shopee accent — dùng cho CTA / highlight chính */
+  --shopee:       #EE4D2D;
+  --shopee-hover: #D8431F;
+  --shopee-lt:    #FFF1ED;
+
   /* Legacy aliases (keep for app.js references) */
-  --accent:   var(--blue);
+  --accent:   var(--shopee);
   --accent2:  var(--green);
   --danger:   var(--red);
   --warn:     var(--amber);
@@ -46,21 +51,21 @@
   --bg3:      var(--surface3);
   --bg4:      var(--surface4);
 
-  /* Typography */
+  /* Typography — KHÔNG đổi, giữ nguyên theo yêu cầu */
   --sans: 'Times New Roman', Times, serif;
   --mono: 'Times New Roman', Times, serif;
   --display: 'Times New Roman', Times, serif;
 
   /* Geometry */
-  --radius:    12px;
-  --radius-sm: 8px;
-  --radius-xs: 5px;
+  --radius:    16px;
+  --radius-sm: 10px;
+  --radius-xs: 8px;
 
-  /* Shadow */
-  --shadow-xs: 0 1px 2px rgba(15,23,41,.06);
-  --shadow-sm: 0 2px 6px rgba(15,23,41,.07), 0 1px 2px rgba(15,23,41,.04);
-  --shadow-md: 0 4px 16px rgba(15,23,41,.10), 0 2px 4px rgba(15,23,41,.05);
-  --shadow-lg: 0 12px 40px rgba(15,23,41,.14), 0 4px 8px rgba(15,23,41,.06);
+  /* Shadow — theo phong cách portal (soft / card / lifted) */
+  --shadow-xs: 0 1px 2px rgba(17,51,102,.05), 0 1px 1px rgba(17,51,102,.04);
+  --shadow-sm: 0 2px 6px rgba(17,51,102,.07), 0 1px 2px rgba(17,51,102,.05);
+  --shadow-md: 0 8px 28px rgba(17,51,102,.09), 0 2px 6px rgba(17,51,102,.05);
+  --shadow-lg: 0 24px 64px rgba(17,51,102,.14), 0 4px 12px rgba(17,51,102,.06);
 }
 
 /* ── RESET ── */
@@ -74,7 +79,6 @@ body {
   line-height: 1.5;
   min-height: 100vh;
 }
-/* Form controls không tự kế thừa font-family theo mặc định trình duyệt → ép đồng bộ toàn hệ thống */
 button, input, select, textarea, optgroup, option {
   font-family: inherit;
 }
@@ -82,7 +86,7 @@ button, input, select, textarea, optgroup, option {
 /* ── AUTH OVERLAY ── */
 .auth-overlay {
   position: fixed; inset: 0;
-  background: rgba(10,15,35,.65);
+  background: rgba(15,18,34,.65);
   backdrop-filter: blur(12px);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
@@ -99,7 +103,7 @@ button, input, select, textarea, optgroup, option {
 }
 .auth-logo {
   font-size: 2rem; font-weight: 800;
-  color: var(--blue); letter-spacing: -.03em; margin-bottom: 6px;
+  color: var(--shopee); letter-spacing: -.03em; margin-bottom: 6px;
 }
 .auth-sub { color: var(--text3); font-size: 13px; margin-bottom: 2.25rem }
 .btn-google {
@@ -109,9 +113,9 @@ button, input, select, textarea, optgroup, option {
   padding: 11px 22px; font-size: 14px; font-weight: 500;
   cursor: pointer; text-decoration: none;
   box-shadow: var(--shadow-sm);
-  transition: box-shadow .15s, border-color .15s;
+  transition: box-shadow .15s, border-color .15s, transform .15s;
 }
-.btn-google:hover { box-shadow: var(--shadow-md); border-color: var(--border3) }
+.btn-google:hover { box-shadow: var(--shadow-md); border-color: var(--shopee); transform: translateY(-1px) }
 .auth-note { margin-top: 1.75rem; font-size: 11px; color: var(--text4) }
 
 /* ── HEADER ── */
@@ -125,13 +129,13 @@ button, input, select, textarea, optgroup, option {
 }
 .header-left { display: flex; align-items: center; gap: 14px }
 .logo {
-  font-size: 1.2rem; font-weight: 800; color: var(--blue);
+  font-size: 1.2rem; font-weight: 800; color: var(--shopee);
   letter-spacing: -.03em;
 }
 .logo-tag {
   font-size: 10.5px; color: var(--text4);
   letter-spacing: .07em; text-transform: uppercase;
-  background: var(--surface2);
+  background: var(--blue-lt);
   border: 1px solid var(--border);
   border-radius: 5px; padding: 2px 9px;
   font-weight: 500;
@@ -156,12 +160,12 @@ button, input, select, textarea, optgroup, option {
   cursor: pointer; transition: all .15s; font-family: var(--sans);
   white-space: nowrap;
 }
-.btn-outline:hover { background: var(--surface2); color: var(--text); border-color: var(--border3) }
+.btn-outline:hover { background: var(--blue-lt); color: var(--text); border-color: var(--shopee) }
 
 /* ── VIEWER BANNER ── */
 .viewer-banner {
-  background: var(--blue-lt); border-bottom: 1px solid var(--blue-md);
-  padding: 9px 1.75rem; font-size: 12px; color: var(--blue);
+  background: var(--shopee-lt); border-bottom: 1px solid #ffd9cc;
+  padding: 9px 1.75rem; font-size: 12px; color: var(--shopee-hover);
   text-align: center; font-weight: 500;
 }
 .viewer-banner.hidden { display: none }
@@ -179,12 +183,14 @@ button, input, select, textarea, optgroup, option {
   margin-bottom: 1.25rem;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
+  transition: box-shadow .2s ease;
 }
+.param-bar:hover { box-shadow: var(--shadow-md) }
 .param-group {
   display: flex; flex-direction: column; justify-content: center;
   gap: 4px; padding: 10px 14px;
 }
-.param-group:first-child { border-left: 3px solid var(--blue); }
+.param-group:first-child { border-left: 3px solid var(--shopee); }
 .param-group label {
   font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
   color: var(--text3); font-weight: 600; white-space: nowrap;
@@ -206,7 +212,7 @@ button, input, select, textarea, optgroup, option {
   border-radius: var(--radius-xs);
   transition: border-color .15s, box-shadow .15s; outline: none;
 }
-.param-group input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.1) }
+.param-group input:focus { border-color: var(--shopee); box-shadow: 0 0 0 3px rgba(238,77,45,.1) }
 .param-group input:disabled { opacity: .4; cursor: not-allowed }
 .derived .derived-val {
   font-family: var(--mono); font-size: 14px; font-weight: 700;
@@ -220,17 +226,17 @@ button, input, select, textarea, optgroup, option {
 }
 .btn-run {
   height: 37px; padding: 0 20px;
-  background: var(--blue); color: #fff;
+  background: var(--shopee); color: #fff;
   border: none; border-radius: var(--radius-xs);
   font-size: 13px; font-weight: 700;
   cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
-  transition: background .15s, box-shadow .15s;
+  transition: background .15s, box-shadow .15s, transform .15s;
   white-space: nowrap; font-family: var(--sans);
-  box-shadow: 0 1px 3px rgba(37,99,235,.35);
+  box-shadow: 0 1px 3px rgba(238,77,45,.35);
   letter-spacing: .01em;
 }
-.btn-run:hover { background: #1d4ed8; box-shadow: 0 3px 10px rgba(37,99,235,.4) }
-.btn-run:disabled { opacity: .5; cursor: not-allowed }
+.btn-run:hover { background: var(--shopee-hover); box-shadow: 0 6px 16px rgba(238,77,45,.4); transform: translateY(-1px) }
+.btn-run:disabled { opacity: .5; cursor: not-allowed; transform: none }
 .btn-run-icon { font-size: 10px }
 .btn-save {
   height: 37px; padding: 0 16px;
@@ -274,22 +280,8 @@ button, input, select, textarea, optgroup, option {
   50%      { transform: scale(1.15) }
 }
 .tab.active {
-  color: var(--blue); font-weight: 700;
-  border-bottom-color: var(--blue);
-}
-.tab-icon {
-  display: inline-flex; align-items: center; opacity: .55;
-  transition: transform .2s ease, opacity .2s ease;
-}
-.tab-icon svg { display: block }
-.tab:hover .tab-icon { opacity: .9; transform: translateY(-1px) scale(1.08) }
-.tab.active .tab-icon {
-  opacity: 1;
-  animation: tabIconPulse 2.2s ease-in-out infinite;
-}
-@keyframes tabIconPulse {
-  0%, 100% { transform: scale(1) }
-  50%      { transform: scale(1.15) }
+  color: var(--shopee); font-weight: 700;
+  border-bottom-color: var(--shopee);
 }
 .tab:hover:not(.active) { color: var(--text2) }
 .section { display: none }
@@ -320,7 +312,7 @@ button, input, select, textarea, optgroup, option {
   font-weight: 600; outline: none; width: 100%;
   transition: border-color .15s, box-shadow .15s;
 }
-.stp-item input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.1) }
+.stp-item input:focus { border-color: var(--shopee); box-shadow: 0 0 0 3px rgba(238,77,45,.1) }
 .stp-item input::placeholder { color: var(--text4); font-family: var(--sans); font-weight: 400 }
 
 /* ── UPLOAD SECTION ── */
@@ -331,9 +323,9 @@ button, input, select, textarea, optgroup, option {
   border-radius: var(--radius);
   padding: 1.5rem;
   box-shadow: var(--shadow-xs);
-  transition: box-shadow .15s;
+  transition: box-shadow .2s ease, transform .2s ease;
 }
-.upload-card:hover { box-shadow: var(--shadow-sm) }
+.upload-card:hover { box-shadow: var(--shadow-md) }
 .upload-card-header {
   display: flex; align-items: flex-start; gap: 14px;
   margin-bottom: 1.25rem;
@@ -342,7 +334,7 @@ button, input, select, textarea, optgroup, option {
 }
 .upload-card-num {
   font-size: 1.5rem; font-weight: 800;
-  color: var(--blue); line-height: 1;
+  color: var(--shopee); line-height: 1;
   flex-shrink: 0; opacity: .4;
   font-family: var(--mono);
 }
@@ -356,7 +348,7 @@ button, input, select, textarea, optgroup, option {
   cursor: pointer; white-space: nowrap; flex-shrink: 0;
   transition: all .15s; font-family: var(--sans);
 }
-.btn-template:hover { background: var(--surface2); border-color: var(--border3); color: var(--text) }
+.btn-template:hover { background: var(--blue-lt); border-color: var(--shopee); color: var(--shopee-hover) }
 
 /* Google Sheets row */
 .sheet-row {
@@ -376,7 +368,7 @@ button, input, select, textarea, optgroup, option {
   font-family: 'Times New Roman', Times, serif;
   transition: border-color .15s;
 }
-.sheet-input:focus { border-color: var(--blue) }
+.sheet-input:focus { border-color: var(--shopee) }
 .sheet-input::placeholder { color: var(--text4); font-family: 'Times New Roman', Times, serif }
 .sheet-tab-input {
   width: 88px; flex-shrink: 0;
@@ -386,16 +378,16 @@ button, input, select, textarea, optgroup, option {
   font-family: 'Times New Roman', Times, serif;
   font-weight: 600; outline: none;
 }
-.sheet-tab-input:focus { border-color: var(--blue) }
+.sheet-tab-input:focus { border-color: var(--shopee) }
 .btn-sheet {
   flex-shrink: 0; padding: 6px 15px;
-  background: var(--blue); color: #fff;
+  background: var(--shopee); color: #fff;
   border: none; border-radius: var(--radius-xs);
   font-size: 12px; font-weight: 700;
   cursor: pointer; font-family: 'Times New Roman', Times, serif;
   transition: background .15s;
 }
-.btn-sheet:hover { background: #1d4ed8 }
+.btn-sheet:hover { background: var(--shopee-hover) }
 .sheet-divider {
   display: flex; align-items: center; gap: 10px;
   margin: 10px 0; color: var(--text4); font-size: 11px;
@@ -413,14 +405,14 @@ button, input, select, textarea, optgroup, option {
   background: var(--bg);
 }
 .drop-zone:hover, .drop-zone.drag {
-  background: var(--blue-lt); border-color: var(--blue);
+  background: var(--shopee-lt); border-color: var(--shopee);
 }
 .drop-icon { font-size: 1.75rem; margin-bottom: 8px; opacity: .6 }
 .drop-text { font-size: 13px; font-weight: 600; color: var(--text2); margin-bottom: 4px; font-family: 'Times New Roman', Times, serif }
 .drop-sub { font-size: 11px; color: var(--text3); font-family: 'Times New Roman', Times, serif }
 .drop-sub code {
-  font-family: 'Times New Roman', Times, serif; color: var(--blue);
-  font-size: 10px; background: var(--blue-lt);
+  font-family: 'Times New Roman', Times, serif; color: var(--shopee-hover);
+  font-size: 10px; background: var(--shopee-lt);
   padding: 1px 4px; border-radius: 3px;
 }
 .upload-status { font-size: 12px; margin-top: 10px; min-height: 18px; font-weight: 500 }
@@ -454,7 +446,9 @@ button, input, select, textarea, optgroup, option {
   padding: .75rem 1rem;
   box-shadow: var(--shadow-xs);
   position: relative; overflow: hidden;
+  transition: box-shadow .2s ease, transform .2s ease;
 }
+.kpi-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px) }
 .kpi-card::before {
   content: ''; position: absolute;
   top: 0; left: 0; right: 0; height: 3px;
@@ -471,17 +465,17 @@ button, input, select, textarea, optgroup, option {
 .kpi-sub { font-size: 10px; color: var(--text3); font-family: var(--mono) }
 .kv-good  { color: var(--green) }
 .kv-bad   { color: var(--red) }
-.kv-neutral { color: var(--blue) }
+.kv-neutral { color: var(--shopee) }
 .kv-dim   { color: var(--text2) }
 .kpi-card:has(.kv-good)::before  { background: var(--green) }
 .kpi-card:has(.kv-bad)::before   { background: var(--red) }
-.kpi-card:has(.kv-neutral)::before { background: var(--blue) }
+.kpi-card:has(.kv-neutral)::before { background: var(--shopee) }
 
 /* ── INFO BAR ── */
 .info-bar {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-left: 4px solid var(--blue);
+  border-left: 4px solid var(--shopee);
   border-radius: var(--radius-xs);
   padding: 10px 16px; font-size: 12px; color: var(--text2);
   margin-bottom: 1rem; font-family: var(--mono); line-height: 1.7;
@@ -504,7 +498,7 @@ button, input, select, textarea, optgroup, option {
   font-size: 13px; font-weight: 500; outline: none; cursor: pointer;
   min-width: 220px; transition: border-color .15s;
 }
-.day-select:focus { border-color: var(--blue) }
+.day-select:focus { border-color: var(--shopee) }
 .day-select option {
   font-family: 'Times New Roman', Times, serif;
 }
@@ -517,7 +511,7 @@ button, input, select, textarea, optgroup, option {
   border-radius: var(--radius-xs); color: var(--text); outline: none;
   transition: border-color .15s;
 }
-.hc-input:focus  { border-color: var(--blue) }
+.hc-input:focus  { border-color: var(--shopee) }
 .hc-input:disabled { opacity: .4; cursor: not-allowed }
 
 /* ── WEEK / DAY GRID (legacy containers) ── */
@@ -528,7 +522,9 @@ button, input, select, textarea, optgroup, option {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 1.25rem;
   margin-bottom: 1rem; box-shadow: var(--shadow-xs);
+  transition: box-shadow .2s ease;
 }
+.chart-card:hover { box-shadow: var(--shadow-md) }
 .chart-title {
   font-size: 13px; font-weight: 700; color: var(--text);
   margin-bottom: 4px; display: flex; align-items: center; gap: 10px;
@@ -544,7 +540,9 @@ button, input, select, textarea, optgroup, option {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); margin-bottom: 1rem; overflow: hidden;
   box-shadow: var(--shadow-xs);
+  transition: box-shadow .2s ease;
 }
+.table-card:hover { box-shadow: var(--shadow-sm) }
 .table-card-title {
   font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
   font-weight: 700; color: var(--text2);
@@ -553,7 +551,7 @@ button, input, select, textarea, optgroup, option {
   display: flex; align-items: center; justify-content: space-between;
   cursor: pointer; user-select: none; transition: background .15s;
 }
-.table-card-title:hover { background: var(--surface3) }
+.table-card-title:hover { background: var(--blue-lt) }
 .table-card-toggle {
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; flex-shrink: 0;
@@ -576,7 +574,7 @@ button, input, select, textarea, optgroup, option {
   font-family: var(--mono); font-size: 12px; white-space: nowrap;
   transition: background .1s;
 }
-.data-table tbody tr:nth-child(even) td { background: rgba(0,0,0,.012) }
+.data-table tbody tr:nth-child(even) td { background: rgba(17,51,102,.012) }
 .data-table tr:hover td { background: var(--blue-lt) !important }
 .data-table tr.dim td { opacity: .3 }
 
@@ -596,10 +594,10 @@ button, input, select, textarea, optgroup, option {
 .badge-blue   { background: var(--blue-lt);   color: var(--blue);   border: 1.5px solid var(--blue-md) }
 .badge-gray   { background: var(--surface2);  color: var(--text3);  border: 1.5px solid var(--border) }
 .carry-tag {
-  background: var(--amber-lt); color: var(--amber);
+  background: var(--shopee-lt); color: var(--shopee-hover);
   font-size: 9px; padding: 1px 6px; border-radius: 4px;
   margin-left: 5px; font-family: var(--mono); font-weight: 700;
-  border: 1px solid #fde68a;
+  border: 1px solid #ffd9cc;
 }
 
 /* ── PIVOT WEEK TABLE ── */
@@ -635,8 +633,8 @@ button, input, select, textarea, optgroup, option {
   font-weight: 700; color: var(--text); background: var(--surface3);
 }
 .pivot-week tr.pw-hc td {
-  font-weight: 800; color: var(--blue); font-size: 13px;
-  background: var(--blue-lt);
+  font-weight: 800; color: var(--shopee); font-size: 13px;
+  background: var(--shopee-lt);
 }
 .pivot-week tr.pw-cov td {
   font-weight: 700; background: var(--green-lt);
@@ -669,7 +667,7 @@ button, input, select, textarea, optgroup, option {
 /* ── MODAL ── */
 .modal { position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center }
 .modal.hidden { display: none }
-.modal-backdrop { position: absolute; inset: 0; background: rgba(10,15,35,.55); backdrop-filter: blur(5px) }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(15,18,34,.55); backdrop-filter: blur(5px) }
 .modal-box {
   position: relative; background: var(--surface);
   border: 1px solid var(--border2); border-radius: var(--radius);
@@ -702,7 +700,7 @@ button, input, select, textarea, optgroup, option {
   border-radius: var(--radius-xs); color: var(--text);
   font-size: 13px; outline: none; transition: border-color .15s;
 }
-.editor-input:focus { border-color: var(--blue) }
+.editor-input:focus { border-color: var(--shopee) }
 .editor-list { display: flex; flex-direction: column; gap: 6px }
 .editor-row {
   display: flex; align-items: center; gap: 10px; padding: 9px 13px;
@@ -728,15 +726,15 @@ button, input, select, textarea, optgroup, option {
   border-radius: var(--radius); box-shadow: var(--shadow-xs);
 }
 .ai-spinner {
-  width: 14px; height: 14px; border: 2px solid var(--blue-md);
-  border-top-color: var(--blue); border-radius: 50%;
+  width: 14px; height: 14px; border: 2px solid var(--shopee-lt);
+  border-top-color: var(--shopee); border-radius: 50%;
   animation: spin .7s linear infinite; flex-shrink: 0;
 }
 @keyframes spin { to { transform: rotate(360deg) } }
 .ai-insight-result {
-  background: linear-gradient(135deg, #f0f7ff 0%, #fafcff 100%);
+  background: linear-gradient(135deg, #FFF9F6 0%, #FAFCFF 100%);
   border: 1px solid var(--blue-md);
-  border-left: 4px solid var(--blue);
+  border-left: 4px solid var(--shopee);
   border-radius: var(--radius);
   overflow: hidden; box-shadow: var(--shadow-xs);
 }
@@ -744,7 +742,7 @@ button, input, select, textarea, optgroup, option {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 16px; background: var(--blue-lt);
   border-bottom: 1px solid var(--blue-md);
-  font-size: 11px; font-weight: 700; color: var(--blue);
+  font-size: 11px; font-weight: 700; color: var(--shopee-hover);
   text-transform: uppercase; letter-spacing: .07em;
 }
 .ai-icon { font-size: 13px }
@@ -788,13 +786,13 @@ button, input, select, textarea, optgroup, option {
 .hm-cell { display:flex; flex-direction:column; align-items:center; gap:3px; min-width:44px }
 .hm-bar {
   width: 40px; height: 6px; border-radius: 3px; overflow: hidden;
-  display: flex; background: rgba(0,0,0,.05);
+  display: flex; background: rgba(17,51,102,.05);
 }
-.hm-bar-ft { background: #2563eb; height: 100% }
-.hm-bar-pt { background: #f59e0b; height: 100% }
+.hm-bar-ft { background: #113366; height: 100% }
+.hm-bar-pt { background: #EE4D2D; height: 100% }
 .hm-nums { display: flex; gap: 5px; font-family: var(--mono); font-size: 10px; font-weight: 700 }
-.hm-num-ft { color: #2563eb }
-.hm-num-pt { color: #f59e0b }
+.hm-num-ft { color: #113366 }
+.hm-num-pt { color: #EE4D2D }
 /* ── TREND GRID ── */
 .trend-grid {
   display: grid; grid-template-columns: 1fr;
@@ -802,13 +800,45 @@ button, input, select, textarea, optgroup, option {
 }
 
 /* ── SCROLLBAR ── */
-::-webkit-scrollbar { width: 5px; height: 5px }
+::-webkit-scrollbar { width: 6px; height: 6px }
 ::-webkit-scrollbar-track { background: transparent }
-::-webkit-scrollbar-thumb { background: var(--surface4); border-radius: 3px }
-::-webkit-scrollbar-thumb:hover { background: var(--text4) }
+::-webkit-scrollbar-thumb { background: var(--surface4); border-radius: 4px }
+::-webkit-scrollbar-thumb:hover { background: var(--shopee) }
 
 /* ── UTILS ── */
 .hidden { display: none !important }
+
+/* ── 3D TILT / FLOAT / GLOW — đồng bộ hiệu ứng với WFM Internal Tool Portal ──
+   Chỉ thêm hiệu ứng thị giác thuần CSS, không đụng tới logic/DOM binding của app.js */
+.tilt-3d {
+  transition: transform .12s ease-out, box-shadow .2s ease;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0px); }
+  50%      { transform: translateY(-6px); }
+}
+.animate-float { animation: floatSlow 4s ease-in-out infinite; }
+
+@keyframes pulseGlow {
+  0%, 100%  { box-shadow: 0 0 0 0 var(--glow-color, rgba(238,77,45,.5)); }
+  70%       { box-shadow: 0 0 0 8px var(--glow-color-end, rgba(238,77,45,0)); }
+}
+.animate-pulse-glow { animation: pulseGlow 1.8s cubic-bezier(0.4,0,0.6,1) infinite; }
+
+.glow-ring{ position:relative; }
+.glow-ring::before{
+  content:''; position:absolute; inset:-2px; border-radius:inherit; z-index:-1;
+  background:linear-gradient(135deg,#EE4D2D,#113366,#EE4D2D);
+  background-size:220% 220%; opacity:0; filter:blur(10px);
+  transition:opacity .25s; animation: glowShift 4s ease infinite;
+}
+.glow-ring:hover::before{ opacity:.4 }
+@keyframes glowShift{
+  0%,100%{ background-position:0% 50% }
+  50%{ background-position:100% 50% }
+}
 
 /* ── RESPONSIVE ── */
 @media (max-width: 1024px) {
