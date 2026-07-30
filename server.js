@@ -641,8 +641,11 @@ async function generateLiveMatrixGrid(passedSpreadsheetId) {
 // ── STATIC ────────────────────────────────────────────────────────────────────
 // Vẫn expose /public và root làm static assets như cũ (app.js, style.css, ...
 // nằm ở root — KHÔNG đổi để không phá đường dẫn tương đối trong index.html gốc).
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.static(__dirname));
+// QUAN TRỌNG: index:false để express.static KHÔNG tự động trả index.html cho GET '/'
+// — nếu không, nó sẽ chặn request trước khi tới được route app.get('/') bên dưới,
+// khiến Landing Page (route '/') không bao giờ được thực thi.
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+app.use(express.static(__dirname, { index: false }));
 
 // GET /            → Landing Page mới (first look, có CTA "Vào công cụ")
 // GET /app         → Tool ShiftIQ thật (index.html gốc, giữ nguyên 100% tính năng)
