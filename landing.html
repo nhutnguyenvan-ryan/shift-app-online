@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Shift Scheduling — Shopee WFM</title>
+<meta name="description" content="AI-powered shift scheduling and HC Order optimization for Shopee contact center operations.">
+
+<!-- Tailwind CDN & Config -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ["'Segoe UI'", 'system-ui', '-apple-system', 'sans-serif'] },
+        colors: {
+          shopee: '#EE4D2D',
+          'shopee-hover': '#D8431F',
+          'shopee-light': '#FFF1ED',
+          navy: '#113366',
+          'navy-light': '#EAF0FB',
+          ink: { DEFAULT:'#0F1222', 2:'#3D4257', 3:'#7A7F99', 4:'#A7ABC2' },
+          canvas: '#F9FAFB'
+        },
+        boxShadow: {
+          soft: '0 1px 2px rgba(17,51,102,.05), 0 1px 1px rgba(17,51,102,.04)',
+          card: '0 8px 28px rgba(17,51,102,.09), 0 2px 6px rgba(17,51,102,.05)',
+          lifted: '0 24px 64px rgba(17,51,102,.14), 0 4px 12px rgba(17,51,102,.06)'
+        }
+      }
+    }
+  }
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js" crossorigin></script>
+
+<style>
+  body { background:#FAFBFD; margin:0; padding:0; }
+  .bg-noise { background-image: radial-gradient(circle at 1px 1px, rgba(15,18,34,.05) 1px, transparent 0); background-size: 22px 22px; }
+  ::-webkit-scrollbar { width:6px; height:6px }
+  ::-webkit-scrollbar-thumb { background:#DDE1ED; border-radius:4px }
+
+  @keyframes floatSlow {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+  }
+  .animate-float { animation: floatSlow 4s ease-in-out infinite; }
+
+  @keyframes pulseGlow {
+    0%, 100%  { box-shadow: 0 0 0 0 var(--glow-color, rgba(238,77,45,.5)); }
+    70%       { box-shadow: 0 0 0 9px var(--glow-color-end, rgba(238,77,45,0)); }
+  }
+  .animate-pulse-glow { animation: pulseGlow 1.8s cubic-bezier(0.4,0,0.6,1) infinite; }
+
+  /* ── PARALLAX BACKDROP (Hero) ── */
+  .parallax-layer{
+    position:absolute; inset:-10% -5%; pointer-events:none; z-index:0;
+    background-image:
+      radial-gradient(circle at 15% 25%, rgba(238,77,45,.08) 0, transparent 42%),
+      radial-gradient(circle at 85% 20%, rgba(17,51,102,.10) 0, transparent 40%),
+      radial-gradient(circle at 50% 90%, rgba(238,77,45,.05) 0, transparent 45%);
+    will-change: transform;
+  }
+  .hero-gradient{
+    background: linear-gradient(150deg, #FFF9F6 0%, #FFFFFF 45%, #EFF4FF 100%);
+  }
+  .dashboard-gradient{
+    background: linear-gradient(160deg, #FFF1EC 0%, #FDF7F5 30%, #F4F7FC 65%, #EAF0FB 100%);
+    position: relative;
+  }
+  .dashboard-gradient::before{
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      radial-gradient(circle at 8% 12%, rgba(238,77,45,.10) 0, transparent 38%),
+      radial-gradient(circle at 92% 85%, rgba(17,51,102,.12) 0, transparent 42%);
+  }
+  .dashboard-gradient > *{ position:relative; z-index:1; }
+
+  /* ── 3D TILT INTERACTIVE ── */
+  .tilt-3d{ transition: transform .12s ease-out, box-shadow .2s ease; transform-style: preserve-3d; will-change: transform; }
+
+  /* ── GLOW EFFECT cho CTA chính ── */
+  .glow-ring{ position:relative; }
+  .glow-ring::before{
+    content:''; position:absolute; inset:-2px; border-radius:inherit; z-index:-1;
+    background:linear-gradient(135deg,#EE4D2D,#113366,#EE4D2D);
+    background-size:220% 220%; opacity:0; filter:blur(10px);
+    transition:opacity .25s; animation: glowShift 4s ease infinite;
+  }
+  .glow-ring:hover::before{ opacity:.4 }
+  @keyframes glowShift{
+    0%,100%{ background-position:0% 50% }
+    50%{ background-position:100% 50% }
+  }
+
+  /* ── UNDERLIGHT cho nav links ── */
+  .nav-underlight{ position:relative; padding-bottom:3px; }
+  .nav-underlight::after{
+    content:''; position:absolute; left:50%; bottom:0; width:0; height:2px;
+    background:#EE4D2D; border-radius:2px; transform:translateX(-50%);
+    box-shadow:0 0 8px rgba(238,77,45,.7);
+    transition:width .25s ease;
+  }
+  .nav-underlight:hover::after{ width:100%; }
+
+  /* ── HERO FLOATING DECOR ICONS ── */
+  .hero-float-icon{
+    position:absolute; z-index:1; font-size:32px; opacity:.55;
+    filter:drop-shadow(0 6px 14px rgba(17,51,102,.14));
+    pointer-events:none; user-select:none;
+  }
+  @media (max-width:900px){ .hero-float-icon{ display:none; } }
+
+  /* ── NAVY-TINTED BORDER ── */
+  .border-navy-tint{ border-color: rgba(17,51,102,.09) !important; }
+
+  /* ── CUSTOM CURSOR ─────────────────────────────────────────────────────
+     Chấm cam theo dõi chuột, phóng to khi hover phần tử tương tác.
+     Tự tắt trên thiết bị cảm ứng / màn hình hẹp để không cản trở thao tác. */
+  body.has-custom-cursor { cursor: none; }
+  #customCursor{
+    position: fixed; top:0; left:0; width:20px; height:20px; border-radius:50%;
+    border:2px solid #EE4D2D; pointer-events:none; z-index:9999;
+    transform: translate(-50%,-50%); transition: width .15s, height .15s, background .15s, border-color .15s, opacity .15s;
+    opacity:0;
+  }
+  #customCursor.active{ opacity:1 }
+  #customCursor.hover{ width:42px; height:42px; background:rgba(238,77,45,.12); border-color:#113366; }
+  @media (max-width:900px), (hover:none){
+    #customCursor{ display:none !important }
+    body.has-custom-cursor{ cursor:auto !important }
+  }
+</style>
+</head>
+<body class="font-sans text-ink antialiased">
+
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState } = React;
+
+/* ═══════════════════════════════ SVG SYSTEM ICONS ═══════════════════════════════ */
+const Icon = ({ children, size = 20, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    {children}
+  </svg>
+);
+const IconMenu = (p) => <Icon {...p}><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></Icon>;
+const IconX = (p) => <Icon {...p}><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></Icon>;
+const IconArrowRight = (p) => <Icon {...p}><line x1="4" y1="12" x2="20" y2="12"/><polyline points="13 5 20 12 13 19"/></Icon>;
+const IconCheck = (p) => <Icon {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></Icon>;
+const IconClock = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Icon>;
+const IconGrid = (p) => <Icon {...p}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></Icon>;
+const IconSheet = (p) => <Icon {...p}><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></Icon>;
+const IconTrend = (p) => <Icon {...p}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></Icon>;
+const IconHome = (p) => <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>;
+const IconSparkle = (p) => <Icon {...p}><path d="M12 3l1.912 5.813a2 2 0 001.275 1.275L21 12l-5.813 1.912a2 2 0 00-1.275 1.275L12 21l-1.912-5.813a2 2 0 00-1.275-1.275L3 12l5.813-1.912a2 2 0 001.275-1.275L12 3z"/></Icon>;
+const IconGoogle = (p) => (
+  <svg width={p.size||18} height={p.size||18} viewBox="0 0 18 18">
+    <path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 002.38-5.88c0-.57-.05-.66-.15-1.18z"/>
+    <path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 01-7.18-2.54H1.83v2.07A8 8 0 008.98 17z"/>
+    <path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 010-3.04V5.41H1.83a8 8 0 000 7.18l2.67-2.07z"/>
+    <path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 001.83 5.4L4.5 7.49a4.77 4.77 0 014.48-3.3z"/>
+  </svg>
+);
+
+/* ═══════════════════════════════ DATA ═══════════════════════════════ */
+const FEATURES = [
+  { icon: IconSheet,  title:'Data Input linh hoạt',      desc:'Nhập Daily Inflow và %Enqueue trực tiếp từ Google Sheets hoặc kéo thả file CSV/Excel — dữ liệu luôn đồng bộ với hệ thống downstream.' },
+  { icon: IconGrid,   title:'Weekly & Daily Breakdown',   desc:'Pivot HC theo giờ/ngày, breakdown chi tiết từng khung giờ — nắm rõ Coverage, Abandon và điểm nghẽn ngay trên một màn hình.' },
+  { icon: IconClock,  title:'Shift Allocation tối ưu',    desc:'Thuật toán greedy marginal-gain tự động phân bổ ca FT/PT theo Coverage Target, có xét carry-over và hợp nhất PT→FT thông minh.' },
+  { icon: IconTrend,  title:'Trend Report trực quan',     desc:'Biểu đồ Inflow – HC Order – %Task Coverage theo thời gian, giúp phát hiện xu hướng và lên kế hoạch nhân sự chủ động.' },
+  { icon: IconHome,   title:'Work Mode Analysis',         desc:'Phân bổ WFH vs On-Floor tự động theo khung giờ ca, tối ưu trải nghiệm nhân sự song song với hiệu suất vận hành.' },
+  { icon: IconSparkle,title:'AI Insight theo thời gian thực', desc:'Mỗi tab đều có gợi ý phân tích bằng AI — phát hiện rủi ro Coverage/Abandon và đề xuất điều chỉnh ca kịp thời.' },
+];
+
+const HOW_IT_WORKS = [
+  { step:'01', title:'Nhập dữ liệu Inflow',       desc:'Kết nối Google Sheets hoặc upload file — hệ thống tự nhận diện Event Type (Normal/Spike/Sat/Sun...).' },
+  { step:'02', title:'Chạy Optimizer',            desc:'Thiết lập AHT, Utilization, Coverage Target rồi bấm Run — thuật toán tự tính HC Order tối ưu cho từng ngày.' },
+  { step:'03', title:'Xem báo cáo & tinh chỉnh',  desc:'Kiểm tra Weekly/Daily/Shift breakdown, điều chỉnh thủ công nếu cần, tham khảo AI Insight để ra quyết định.' },
+  { step:'04', title:'Export & đồng bộ',          desc:'Xuất kết quả Shift Breakdown ra Google Sheet, tự động đồng bộ xuống các hệ thống vận hành tiếp theo.' },
+];
+
+/* ═══════════════════════════════ NAVBAR ═══════════════════════════════ */
+function Navbar({ onEnterApp }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-ink/10 shadow-sm">
+      <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+        <a href="#top" className="flex items-center gap-3 shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-shopee-light flex items-center justify-center border border-shopee/20 shadow-sm">
+            <IconSheet size={20} className="text-shopee"/>
+          </div>
+          <div className="leading-tight">
+            <div className="font-extrabold text-[16px] tracking-tight"><span className="text-navy">AI Shift</span> <span className="text-shopee">Scheduling</span></div>
+            <div className="text-[11px] text-ink-3"><span className="text-shopee font-extrabold">Shopee</span> · WFM AI Suite</div>
+          </div>
+        </a>
+
+        <nav className="hidden md:flex items-center gap-8 text-[14px] font-semibold text-ink-2">
+          <a href="#overview" className="nav-underlight hover:text-shopee transition-colors">Tổng quan</a>
+          <a href="#features" className="nav-underlight hover:text-shopee transition-colors">Tính năng</a>
+          <a href="#how" className="nav-underlight hover:text-shopee transition-colors">Cách vận hành</a>
+        </nav>
+
+        <div className="hidden md:flex items-center gap-3">
+          <button onClick={onEnterApp} className="glow-ring inline-flex items-center gap-2 bg-shopee hover:bg-shopee-hover text-white text-[13.5px] font-bold px-5 py-2.5 rounded-xl shadow-soft transition-colors">
+            Vào công cụ <IconArrowRight size={15}/>
+          </button>
+        </div>
+
+        <button className="md:hidden w-9 h-9 flex items-center justify-center text-ink-2" onClick={() => setOpen(!open)}>
+          {open ? <IconX size={22}/> : <IconMenu size={22}/>}
+        </button>
+      </div>
+
+      {open && (
+        <div className="md:hidden border-t border-ink/5 bg-white px-5 py-4 flex flex-col gap-3">
+          <a href="#overview" onClick={()=>setOpen(false)} className="text-[14px] font-medium text-ink-2">Tổng quan</a>
+          <a href="#features" onClick={()=>setOpen(false)} className="text-[14px] font-medium text-ink-2">Tính năng</a>
+          <a href="#how" onClick={()=>setOpen(false)} className="text-[14px] font-medium text-ink-2">Cách vận hành</a>
+          <button onClick={onEnterApp} className="bg-shopee text-white text-[14px] font-bold px-4 py-2.5 rounded-xl text-center">Vào công cụ</button>
+        </div>
+      )}
+    </header>
+  );
+}
+
+/* ═══════════════════════════════ HERO ═══════════════════════════════ */
+function Hero({ onEnterApp }) {
+  return (
+    <section id="top" className="relative overflow-hidden bg-noise hero-gradient py-12 md:py-20">
+      <div id="parallaxLayer" className="parallax-layer"></div>
+
+      <span className="hero-float-icon animate-float" style={{top:'6%', left:'3%', animationDuration:'5s'}}>📊</span>
+      <span className="hero-float-icon animate-float" style={{top:'50%', left:'1%', animationDuration:'4.2s', animationDelay:'.6s', fontSize:'22px'}}>⏱️</span>
+      <span className="hero-float-icon animate-float" style={{top:'94%', left:'5%', animationDuration:'5.6s', animationDelay:'1.2s', fontSize:'20px'}}>🗓️</span>
+      <span className="hero-float-icon animate-float" style={{top:'7%', right:'5%', animationDuration:'4.6s', animationDelay:'.3s', fontSize:'24px'}}>👥</span>
+      <span className="hero-float-icon animate-float" style={{top:'50%', right:'1%', animationDuration:'5.8s', animationDelay:'1s', fontSize:'22px'}}>✦</span>
+      <span className="hero-float-icon animate-float" style={{top:'94%', right:'6%', animationDuration:'4.9s', animationDelay:'.7s', fontSize:'22px'}}>🎯</span>
+
+      <div className="relative z-10 max-w-7xl mx-auto px-5 sm:px-8 grid md:grid-cols-2 gap-12 items-center">
+        <div>
+          <div className="animate-float inline-flex items-center gap-2 bg-white border border-ink/10 rounded-full px-4 py-1.5 text-[12px] font-semibold text-ink-2 shadow-soft mb-6">
+            <IconSparkle size={14} className="text-shopee"/> AI-Powered Shift Scheduling
+          </div>
+          <h1 className="text-3xl md:text-[3.25rem] font-extrabold leading-[1.12] tracking-[-0.03em] text-ink">
+            Xếp ca <span className="text-shopee">thông minh hơn</span> với dữ liệu, không phải phỏng đoán
+          </h1>
+          <p className="mt-5 text-[16px] text-ink-3 leading-relaxed max-w-lg">
+            Tự động tính toán HC Order tối ưu theo Coverage Target, Spike Event, và quy tắc PT/FT — thay thế hoàn toàn quy trình xếp ca thủ công của đội ngũ WFM.
+          </p>
+
+          <div className="mt-8 flex flex-wrap items-center gap-4">
+            <button onClick={onEnterApp}
+              className="glow-ring inline-flex items-center gap-2 bg-shopee hover:bg-shopee-hover text-white font-extrabold text-[15px] px-7 py-4 rounded-xl shadow-card transition-all hover:-translate-y-0.5 cursor-pointer">
+              Vào công cụ ngay <IconArrowRight size={18}/>
+            </button>
+            <a href="#features" className="inline-flex items-center gap-2 bg-white border border-ink/15 text-ink-2 font-bold text-[15px] px-6 py-4 rounded-xl hover:bg-canvas transition-colors">
+              Xem tính năng
+            </a>
+          </div>
+
+          <div className="mt-8 flex flex-wrap items-center gap-5 text-[12.5px] font-medium text-ink-3">
+            <div className="flex items-center gap-1.5"><IconCheck size={16} className="text-shopee"/> Đăng nhập bằng Google Shopee</div>
+            <div className="flex items-center gap-1.5"><IconCheck size={16} className="text-shopee"/> Phân quyền Owner / Editor / Viewer</div>
+          </div>
+        </div>
+
+        {/* FLOATING PREVIEW CARD */}
+        <div className="relative">
+          <div className="tilt-3d bg-white border border-ink/10 border-navy-tint rounded-2xl shadow-lifted p-6 animate-float">
+            <div className="flex items-center justify-between border-b border-ink/5 pb-3 mb-5">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-shopee"></span>
+                <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
+              </div>
+              <span className="text-[11px] text-ink-4 font-mono">shift-app-online.onrender.com</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-shopee-light rounded-xl p-4 border border-black/5">
+                <div className="text-[10px] text-ink-3 font-semibold uppercase tracking-wide mb-1">Total HC Order</div>
+                <div className="text-2xl font-extrabold text-shopee tabular-nums">128.5</div>
+                <div className="text-[10px] text-ink-4 mt-1">FT 96 · PT 65 (×½)</div>
+              </div>
+              <div className="bg-navy-light rounded-xl p-4 border border-black/5">
+                <div className="text-[10px] text-ink-3 font-semibold uppercase tracking-wide mb-1">%Task Coverage</div>
+                <div className="text-2xl font-extrabold text-navy tabular-nums">94.2%</div>
+                <div className="text-[10px] text-ink-4 mt-1">target ≥ 93%</div>
+              </div>
+            </div>
+
+            <div className="mt-3 bg-canvas rounded-xl p-3 border border-black/5">
+              <div className="flex items-end gap-1 h-16">
+                {[38,52,44,68,80,72,58].map((h,i)=>(
+                  <div key={i} className="flex-1 bg-shopee/70 rounded-t" style={{height:h+'%'}}></div>
+                ))}
+              </div>
+              <div className="text-[10px] text-ink-4 mt-2 text-center">HC Order theo ngày trong tuần</div>
+            </div>
+
+            <div className="mt-4 bg-shopee-light border border-shopee/20 rounded-xl p-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-shopee flex items-center justify-center text-white shadow-sm">
+                  <IconSparkle size={22} />
+                </div>
+                <div>
+                  <div className="text-[11px] text-ink-3 font-semibold">HC Saved vs 100%</div>
+                  <div className="text-[12.5px] font-bold text-ink">Naive baseline optimization</div>
+                </div>
+              </div>
+              <span className="text-2xl font-extrabold text-shopee tabular-nums">−22%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════ OVERVIEW ═══════════════════════════════ */
+function Overview() {
+  const points = [
+    { label:'Hour Productivity', formula:'= 3600 × Util% ÷ AHT', desc:'Tự động tính năng suất theo giờ dựa trên AHT và Utilization Target.' },
+    { label:'Coverage Target',   formula:'theo Event Type',        desc:'Thiết lập target riêng cho Spike, Spike-1, ngày lễ, cuối tuần...' },
+    { label:'PT → FT Merge',     formula:'coverage-neutral',       desc:'Tự động hợp nhất 2 ca Part-time thành 1 ca Full-time khi hợp lệ.' },
+  ];
+  return (
+    <section id="overview" className="max-w-7xl mx-auto px-5 sm:px-8 py-24 md:py-28">
+      <div className="text-center max-w-2xl mx-auto mb-14">
+        <span className="inline-block text-[12px] font-bold tracking-widest text-shopee uppercase mb-3">TỔNG QUAN</span>
+        <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-ink">Công cụ này giải quyết bài toán gì?</h2>
+        <p className="mt-3 text-ink-3 text-[15px]">Thay thế quy trình xếp ca thủ công nhiều bước bằng một hệ thống tính toán tự động, minh bạch và có thể kiểm chứng.</p>
+      </div>
+      <div className="grid md:grid-cols-3 gap-6">
+        {points.map((p, i) => (
+          <div key={i} className="tilt-3d bg-white border border-ink/10 border-navy-tint rounded-xl p-7 hover:shadow-card transition-all">
+            <div className="text-[11px] font-bold text-shopee uppercase tracking-wide mb-2">{p.label}</div>
+            <div className="font-mono text-[13px] text-navy font-bold mb-3">{p.formula}</div>
+            <p className="text-[13.5px] text-ink-3 leading-relaxed">{p.desc}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════ FEATURES ═══════════════════════════════ */
+function Features() {
+  return (
+    <section id="features" className="dashboard-gradient py-24 md:py-28 border-y border-ink/5">
+      <div className="max-w-7xl mx-auto px-5 sm:px-8">
+        <div className="text-center max-w-2xl mx-auto mb-14">
+          <span className="inline-block text-[12px] font-bold tracking-widest text-shopee uppercase mb-3">TÍNH NĂNG</span>
+          <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-ink">Mọi thứ đội ngũ WFM cần trong một công cụ</h2>
+          <p className="mt-3 text-ink-3 text-[15px]">Từ nhập liệu, tối ưu, đến báo cáo và export — toàn bộ quy trình được tự động hóa bằng AI.</p>
+        </div>
+        <div className="grid md:grid-cols-3 gap-6">
+          {FEATURES.map((f, i) => {
+            const FIcon = f.icon;
+            return (
+              <div key={i} className="tilt-3d bg-white border border-ink/10 border-navy-tint rounded-xl p-8 shadow-soft hover:shadow-card transition-all">
+                <div className="w-14 h-14 rounded-2xl bg-shopee-light flex items-center justify-center mb-6 border border-black/5">
+                  <FIcon size={26} className="text-shopee"/>
+                </div>
+                <h3 className="font-extrabold text-[17px] text-ink mb-3">{f.title}</h3>
+                <p className="text-[13.5px] text-ink-3 leading-relaxed">{f.desc}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════ HOW IT WORKS ═══════════════════════════════ */
+function HowItWorks() {
+  return (
+    <section id="how" className="max-w-7xl mx-auto px-5 sm:px-8 py-24 md:py-28">
+      <div className="text-center max-w-2xl mx-auto mb-14">
+        <span className="inline-block text-[12px] font-bold tracking-widest text-shopee uppercase mb-3">CÁCH VẬN HÀNH</span>
+        <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-ink">4 bước từ dữ liệu đến kết quả</h2>
+      </div>
+      <div className="grid md:grid-cols-4 gap-6">
+        {HOW_IT_WORKS.map((s, i) => (
+          <div key={i} className="relative">
+            <div className="text-[13px] font-mono font-extrabold text-shopee/30 mb-3">{s.step}</div>
+            <h4 className="font-extrabold text-[15.5px] text-navy mb-2">{s.title}</h4>
+            <p className="text-[13px] text-ink-3 leading-relaxed">{s.desc}</p>
+            {i < HOW_IT_WORKS.length - 1 && (
+              <div className="hidden md:block absolute top-2 -right-3 text-ink-4">
+                <IconArrowRight size={16}/>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════ CTA BANNER ═══════════════════════════════ */
+function CTABanner({ onEnterApp }) {
+  return (
+    <section className="max-w-7xl mx-auto px-5 sm:px-8 pb-16">
+      <div className="relative overflow-hidden rounded-3xl bg-shopee px-8 py-16 text-center shadow-lifted">
+        <div className="relative z-10 max-w-2xl mx-auto">
+          <div className="mb-4 inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/20 text-white backdrop-blur">
+            <IconSparkle size={32} />
+          </div>
+          <h2 className="text-2xl md:text-4xl font-extrabold text-white leading-tight">
+            Sẵn sàng tối ưu lịch xếp ca của đội ngũ?
+          </h2>
+          <p className="mt-4 text-white/95 text-[15px] font-medium">
+            Đăng nhập bằng tài khoản Google Shopee để bắt đầu sử dụng ngay.
+          </p>
+          <button onClick={onEnterApp}
+            style={{'--glow-color':'rgba(255,255,255,.5)', '--glow-color-end':'rgba(255,255,255,0)'}}
+            className="animate-pulse-glow mt-8 inline-flex items-center gap-2 bg-white text-shopee hover:bg-shopee-light font-extrabold text-[15px] px-8 py-4 rounded-xl shadow-card transition-all hover:-translate-y-0.5">
+            Vào công cụ ngay <IconArrowRight size={18}/>
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════ FOOTER ═══════════════════════════════ */
+function Footer() {
+  return (
+    <footer className="bg-navy text-white">
+      <div className="max-w-7xl mx-auto px-5 sm:px-8 py-12 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
+            <IconSheet size={18} className="text-white"/>
+          </div>
+          <span className="font-extrabold text-white text-[15px]">AI Shift Scheduling</span>
+          <span className="text-white/50 text-[12px]">· Shopee WFM AI Suite</span>
+        </div>
+        <span className="text-white/60 text-[12.5px] font-mono">shift-app-online.onrender.com</span>
+      </div>
+    </footer>
+  );
+}
+
+/* ═══════════════════════════════ APP ROOT ═══════════════════════════════ */
+function App() {
+  // CTA luôn chuyển thẳng sang /app — không kiểm tra session/OAuth ở Landing,
+  // app thật (/app) tự xử lý auth overlay như logic hiện có.
+  const enterApp = () => { window.location.href = '/app'; };
+
+  return (
+    <div>
+      <Navbar onEnterApp={enterApp}/>
+      <Hero onEnterApp={enterApp}/>
+      <Overview/>
+      <Features/>
+      <HowItWorks/>
+      <CTABanner onEnterApp={enterApp}/>
+      <Footer/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+
+<!-- ═══════════════════════════ EFFECTS: Custom Cursor · Parallax · 3D Tilt ═══════════════════════════ -->
+<div id="customCursor"></div>
+<script>
+(function(){
+  var isTouch = window.matchMedia('(hover: none)').matches || window.innerWidth < 900;
+  var cursor = document.getElementById('customCursor');
+
+  if (!isTouch && cursor) {
+    document.body.classList.add('has-custom-cursor');
+    document.addEventListener('mousemove', function(e){
+      cursor.classList.add('active');
+      cursor.style.left = e.clientX + 'px';
+      cursor.style.top  = e.clientY + 'px';
+    });
+    document.addEventListener('mouseleave', function(){ cursor.classList.remove('active'); });
+    document.addEventListener('mouseover', function(e){
+      if (e.target.closest('a, button, .tilt-3d')) cursor.classList.add('hover');
+    });
+    document.addEventListener('mouseout', function(e){
+      if (e.target.closest('a, button, .tilt-3d')) cursor.classList.remove('hover');
+    });
+  }
+
+  // ── Parallax cho lớp nền Hero khi cuộn trang ──
+  var parallaxTicking = false;
+  function updateParallax(){
+    var layer = document.getElementById('parallaxLayer');
+    if (layer) {
+      var y = window.scrollY || 0;
+      layer.style.transform = 'translateY(' + (y * 0.25) + 'px)';
+    }
+    parallaxTicking = false;
+  }
+  window.addEventListener('scroll', function(){
+    if (!parallaxTicking) { requestAnimationFrame(updateParallax); parallaxTicking = true; }
+  }, { passive: true });
+
+  // ── 3D tilt hover cho mọi phần tử .tilt-3d ──
+  document.addEventListener('mousemove', function(e){
+    var card = e.target.closest && e.target.closest('.tilt-3d');
+    if (!card) return;
+    var r = card.getBoundingClientRect();
+    var px = (e.clientX - r.left) / r.width;
+    var py = (e.clientY - r.top) / r.height;
+    var rx = (0.5 - py) * 5;
+    var ry = (px - 0.5) * 5;
+    card.style.transform = 'perspective(900px) rotateX(' + rx + 'deg) rotateY(' + ry + 'deg) translateY(-2px)';
+  });
+  document.addEventListener('mouseout', function(e){
+    var card = e.target.closest && e.target.closest('.tilt-3d');
+    if (card && (!e.relatedTarget || !card.contains(e.relatedTarget))) {
+      card.style.transform = '';
+    }
+  });
+})();
+</script>
+</body>
+</html>
