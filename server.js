@@ -95,10 +95,11 @@ app.get('/auth/google',
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 app.get('/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/?error=auth_failed' }),
+  passport.authenticate('google', { failureRedirect: '/app?error=auth_failed' }),
   (req, res) => {
     console.log('OAuth OK | user:', req.user?.email);
-    res.redirect('/');
+    // Sau khi đăng nhập xong luôn đưa thẳng vào app thật, không quay lại Landing.
+    res.redirect('/app');
   }
 );
 app.get('/auth/logout', (req, res) => req.logout(() => res.redirect('/')));
@@ -434,7 +435,6 @@ app.post('/api/ai-insight', async (req, res) => {
   const isHeavy = HEAVY_TABS.has(tabId);
   const model = isHeavy ? HEAVY_MODEL : LIGHT_MODEL;
   // max_tokens theo mức độ quan trọng: tab nhẹ (week/trend/workmode) chỉ cần tóm tắt ngắn → cắt xuống 250
-  // max_tokens theo mức độ quan trọng: tab nhẹ (week/trend/workmode) chỉ cần tóm tắt ngắn → cắt xuống 250
   const maxTokens = isHeavy ? 600 : 250;
 
   // Kiểm tra cache trước khi gọi Groq — key gồm ngày hiện tại + tabId + hash context.
@@ -639,8 +639,27 @@ async function generateLiveMatrixGrid(passedSpreadsheetId) {
 }
 
 // ── STATIC ────────────────────────────────────────────────────────────────────
+// Vẫn expose /public và root làm static assets như cũ (app.js, style.css, ...
+// nằm ở root — KHÔNG đổi để không phá đường dẫn tương đối trong index.html gốc).
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
+
+// GET /            → Landing Page mới (first look, có CTA "Vào công cụ")
+// GET /app         → Tool ShiftIQ thật (index.html gốc, giữ nguyên 100% tính năng)
+// GET /* (khác)    → fallback về tool thật, để các đường dẫn cũ không bị vỡ
+app.get('/', (_req, res) => {
+  const landingPath = path.join(__dirname, 'landing.html');
+  if (fs.existsSync(landingPath)) return res.sendFile(landingPath);
+  // Nếu vì lý do gì đó landing.html chưa được deploy kèm, fallback về tool thật
+  // để tránh app "chết trắng trang" ngoài production.
+  res.redirect('/app');
+});
+
+app.get('/app', (_req, res) => {
+  const inPublic = path.join(__dirname, 'public', 'index.html');
+  const inRoot   = path.join(__dirname, 'index.html');
+  res.sendFile(fs.existsSync(inPublic) ? inPublic : inRoot);
+});
 
 app.get('*', (_req, res) => {
   const inPublic = path.join(__dirname, 'public', 'index.html');
