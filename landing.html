@@ -116,9 +116,7 @@
   /* ── NAVY-TINTED BORDER ── */
   .border-navy-tint{ border-color: rgba(17,51,102,.09) !important; }
 
-  /* ── CUSTOM CURSOR ─────────────────────────────────────────────────────
-     Chấm cam theo dõi chuột, phóng to khi hover phần tử tương tác.
-     Tự tắt trên thiết bị cảm ứng / màn hình hẹp để không cản trở thao tác. */
+  /* ── CUSTOM CURSOR ── */
   body.has-custom-cursor { cursor: none; }
   #customCursor{
     position: fixed; top:0; left:0; width:20px; height:20px; border-radius:50%;
@@ -152,7 +150,7 @@ const IconMenu = (p) => <Icon {...p}><line x1="4" y1="7" x2="20" y2="7"/><line x
 const IconX = (p) => <Icon {...p}><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></Icon>;
 const IconArrowRight = (p) => <Icon {...p}><line x1="4" y1="12" x2="20" y2="12"/><polyline points="13 5 20 12 13 19"/></Icon>;
 const IconCheck = (p) => <Icon {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></Icon>;
-const IconClock = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Icon>;
+const IconClock = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 16 14"/></Icon>;
 const IconGrid = (p) => <Icon {...p}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></Icon>;
 const IconSheet = (p) => <Icon {...p}><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></Icon>;
 const IconTrend = (p) => <Icon {...p}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></Icon>;
@@ -169,19 +167,19 @@ const IconGoogle = (p) => (
 
 /* ═══════════════════════════════ DATA ═══════════════════════════════ */
 const FEATURES = [
-  { icon: IconSheet,  title:'Data Input linh hoạt',      desc:'Nhập Daily Inflow và %Enqueue trực tiếp từ Google Sheets hoặc kéo thả file CSV/Excel — dữ liệu luôn đồng bộ với hệ thống downstream.' },
-  { icon: IconGrid,   title:'Weekly & Daily Breakdown',   desc:'Pivot HC theo giờ/ngày, breakdown chi tiết từng khung giờ — nắm rõ Coverage, Abandon và điểm nghẽn ngay trên một màn hình.' },
-  { icon: IconClock,  title:'Shift Allocation tối ưu',    desc:'Thuật toán greedy marginal-gain tự động phân bổ ca FT/PT theo Coverage Target, có xét carry-over và hợp nhất PT→FT thông minh.' },
-  { icon: IconTrend,  title:'Trend Report trực quan',     desc:'Biểu đồ Inflow – HC Order – %Task Coverage theo thời gian, giúp phát hiện xu hướng và lên kế hoạch nhân sự chủ động.' },
-  { icon: IconHome,   title:'Work Mode Analysis',         desc:'Phân bổ WFH vs On-Floor tự động theo khung giờ ca, tối ưu trải nghiệm nhân sự song song với hiệu suất vận hành.' },
-  { icon: IconSparkle,title:'AI Insight theo thời gian thực', desc:'Mỗi tab đều có gợi ý phân tích bằng AI — phát hiện rủi ro Coverage/Abandon và đề xuất điều chỉnh ca kịp thời.' },
+  { icon: IconSheet,  title:'Flexible Data Input',      desc:'Import Daily Inflow and %Enqueue directly from Google Sheets or drag-and-drop CSV/Excel files — data always stays in sync with downstream systems.' },
+  { icon: IconGrid,   title:'Weekly & Daily Breakdown',   desc:'Pivot HC by hour/day with detailed breakdowns for every time slot — track Coverage, Abandon rate, and bottlenecks on a single screen.' },
+  { icon: IconClock,  title:'Optimized Shift Allocation',    desc:'A greedy marginal-gain algorithm automatically allocates FT/PT shifts based on Coverage Target, accounting for carry-over and smart PT→FT consolidation.' },
+  { icon: IconTrend,  title:'Visual Trend Report',     desc:'Inflow – HC Order – %Task Coverage charts over time, helping you spot trends and plan staffing proactively.' },
+  { icon: IconHome,   title:'Work Mode Analysis',         desc:'Automatic WFH vs On-Floor distribution by shift time, balancing employee experience with operational performance.' },
+  { icon: IconSparkle,title:'Real-time AI Insight', desc:'Every tab offers AI-generated analysis — surfacing Coverage/Abandon risks and suggesting timely shift adjustments.' },
 ];
 
 const HOW_IT_WORKS = [
-  { step:'01', title:'Nhập dữ liệu Inflow',       desc:'Kết nối Google Sheets hoặc upload file — hệ thống tự nhận diện Event Type (Normal/Spike/Sat/Sun...).' },
-  { step:'02', title:'Chạy Optimizer',            desc:'Thiết lập AHT, Utilization, Coverage Target rồi bấm Run — thuật toán tự tính HC Order tối ưu cho từng ngày.' },
-  { step:'03', title:'Xem báo cáo & tinh chỉnh',  desc:'Kiểm tra Weekly/Daily/Shift breakdown, điều chỉnh thủ công nếu cần, tham khảo AI Insight để ra quyết định.' },
-  { step:'04', title:'Export & đồng bộ',          desc:'Xuất kết quả Shift Breakdown ra Google Sheet, tự động đồng bộ xuống các hệ thống vận hành tiếp theo.' },
+  { step:'01', title:'Import Inflow Data',       desc:'Connect Google Sheets or upload a file — the system auto-detects Event Type (Normal/Spike/Sat/Sun...).' },
+  { step:'02', title:'Run the Optimizer',            desc:'Set AHT, Utilization, and Coverage Target, then hit Run — the algorithm calculates the optimal HC Order for each day.' },
+  { step:'03', title:'Review Reports & Fine-tune',  desc:'Check Weekly/Daily/Shift breakdowns, adjust manually if needed, and use AI Insight to inform decisions.' },
+  { step:'04', title:'Export & Sync',          desc:'Export the Shift Breakdown results to Google Sheets, automatically syncing downstream to your operational systems.' },
 ];
 
 /* ═══════════════════════════════ NAVBAR ═══════════════════════════════ */
@@ -191,8 +189,12 @@ function Navbar({ onEnterApp }) {
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-ink/10 shadow-sm">
       <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
         <a href="#top" className="flex items-center gap-3 shrink-0">
-          <div className="w-10 h-10 rounded-xl bg-shopee-light flex items-center justify-center border border-shopee/20 shadow-sm">
-            <IconSheet size={20} className="text-shopee"/>
+          <div className="w-10 h-10 rounded-xl bg-shopee-light flex items-center justify-center overflow-hidden p-1 border border-shopee/20 shadow-sm shrink-0">
+            <img
+              src="/assets/logo-icon.png"
+              alt="Shopee Logo"
+              className="w-full h-full object-contain"
+            />
           </div>
           <div className="leading-tight">
             <div className="font-extrabold text-[16px] tracking-tight"><span className="text-navy">AI Shift</span> <span className="text-shopee">Scheduling</span></div>
@@ -201,14 +203,14 @@ function Navbar({ onEnterApp }) {
         </a>
 
         <nav className="hidden md:flex items-center gap-8 text-[14px] font-semibold text-ink-2">
-          <a href="#overview" className="nav-underlight hover:text-shopee transition-colors">Tổng quan</a>
-          <a href="#features" className="nav-underlight hover:text-shopee transition-colors">Tính năng</a>
-          <a href="#how" className="nav-underlight hover:text-shopee transition-colors">Cách vận hành</a>
+          <a href="#overview" className="nav-underlight hover:text-shopee transition-colors">Overview</a>
+          <a href="#features" className="nav-underlight hover:text-shopee transition-colors">Features</a>
+          <a href="#how" className="nav-underlight hover:text-shopee transition-colors">How It Works</a>
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
           <button onClick={onEnterApp} className="glow-ring inline-flex items-center gap-2 bg-shopee hover:bg-shopee-hover text-white text-[13.5px] font-bold px-5 py-2.5 rounded-xl shadow-soft transition-colors">
-            Vào công cụ <IconArrowRight size={15}/>
+            Enter Tool <IconArrowRight size={15}/>
           </button>
         </div>
 
@@ -219,10 +221,10 @@ function Navbar({ onEnterApp }) {
 
       {open && (
         <div className="md:hidden border-t border-ink/5 bg-white px-5 py-4 flex flex-col gap-3">
-          <a href="#overview" onClick={()=>setOpen(false)} className="text-[14px] font-medium text-ink-2">Tổng quan</a>
-          <a href="#features" onClick={()=>setOpen(false)} className="text-[14px] font-medium text-ink-2">Tính năng</a>
-          <a href="#how" onClick={()=>setOpen(false)} className="text-[14px] font-medium text-ink-2">Cách vận hành</a>
-          <button onClick={onEnterApp} className="bg-shopee text-white text-[14px] font-bold px-4 py-2.5 rounded-xl text-center">Vào công cụ</button>
+          <a href="#overview" onClick={()=>setOpen(false)} className="text-[14px] font-medium text-ink-2">Overview</a>
+          <a href="#features" onClick={()=>setOpen(false)} className="text-[14px] font-medium text-ink-2">Features</a>
+          <a href="#how" onClick={()=>setOpen(false)} className="text-[14px] font-medium text-ink-2">How It Works</a>
+          <button onClick={onEnterApp} className="bg-shopee text-white text-[14px] font-bold px-4 py-2.5 rounded-xl text-center">Enter Tool</button>
         </div>
       )}
     </header>
@@ -248,25 +250,25 @@ function Hero({ onEnterApp }) {
             <IconSparkle size={14} className="text-shopee"/> AI-Powered Shift Scheduling
           </div>
           <h1 className="text-3xl md:text-[3.25rem] font-extrabold leading-[1.12] tracking-[-0.03em] text-ink">
-            Xếp ca <span className="text-shopee">thông minh hơn</span> với dữ liệu, không phải phỏng đoán
+            Schedule <span className="text-shopee">smarter</span> with data, not guesswork
           </h1>
           <p className="mt-5 text-[16px] text-ink-3 leading-relaxed max-w-lg">
-            Tự động tính toán HC Order tối ưu theo Coverage Target, Spike Event, và quy tắc PT/FT — thay thế hoàn toàn quy trình xếp ca thủ công của đội ngũ WFM.
+            Automatically compute optimal HC Orders based on Coverage Targets, Spike Events, and PT/FT constraints — fully replacing manual scheduling for WFM teams.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <button onClick={onEnterApp}
               className="glow-ring inline-flex items-center gap-2 bg-shopee hover:bg-shopee-hover text-white font-extrabold text-[15px] px-7 py-4 rounded-xl shadow-card transition-all hover:-translate-y-0.5 cursor-pointer">
-              Vào công cụ ngay <IconArrowRight size={18}/>
+              Launch Tool Now <IconArrowRight size={18}/>
             </button>
             <a href="#features" className="inline-flex items-center gap-2 bg-white border border-ink/15 text-ink-2 font-bold text-[15px] px-6 py-4 rounded-xl hover:bg-canvas transition-colors">
-              Xem tính năng
+              Explore Features
             </a>
           </div>
 
           <div className="mt-8 flex flex-wrap items-center gap-5 text-[12.5px] font-medium text-ink-3">
-            <div className="flex items-center gap-1.5"><IconCheck size={16} className="text-shopee"/> Đăng nhập bằng Google Shopee</div>
-            <div className="flex items-center gap-1.5"><IconCheck size={16} className="text-shopee"/> Phân quyền Owner / Editor / Viewer</div>
+            <div className="flex items-center gap-1.5"><IconCheck size={16} className="text-shopee"/> Sign in with Shopee Google Account</div>
+            <div className="flex items-center gap-1.5"><IconCheck size={16} className="text-shopee"/> Role Management: Owner / Editor / Viewer</div>
           </div>
         </div>
 
@@ -301,7 +303,7 @@ function Hero({ onEnterApp }) {
                   <div key={i} className="flex-1 bg-shopee/70 rounded-t" style={{height:h+'%'}}></div>
                 ))}
               </div>
-              <div className="text-[10px] text-ink-4 mt-2 text-center">HC Order theo ngày trong tuần</div>
+              <div className="text-[10px] text-ink-4 mt-2 text-center">HC Order by Day of Week</div>
             </div>
 
             <div className="mt-4 bg-shopee-light border border-shopee/20 rounded-xl p-3.5 flex items-center justify-between">
@@ -326,16 +328,16 @@ function Hero({ onEnterApp }) {
 /* ═══════════════════════════════ OVERVIEW ═══════════════════════════════ */
 function Overview() {
   const points = [
-    { label:'Hour Productivity', formula:'= 3600 × Util% ÷ AHT', desc:'Tự động tính năng suất theo giờ dựa trên AHT và Utilization Target.' },
-    { label:'Coverage Target',   formula:'theo Event Type',        desc:'Thiết lập target riêng cho Spike, Spike-1, ngày lễ, cuối tuần...' },
-    { label:'PT → FT Merge',     formula:'coverage-neutral',       desc:'Tự động hợp nhất 2 ca Part-time thành 1 ca Full-time khi hợp lệ.' },
+    { label:'Hourly Productivity', formula:'= 3600 × Util% ÷ AHT', desc:'Automatically calculates hourly productivity based on target AHT and Utilization rate.' },
+    { label:'Coverage Target',   formula:'by Event Type',        desc:'Configure custom targets for Spike days, pre-Spike (Spike-1), Holidays, Weekends, etc.' },
+    { label:'PT → FT Merge',     formula:'coverage-neutral',       desc:'Automatically consolidates 2 Part-time shifts into 1 Full-time shift when feasible.' },
   ];
   return (
     <section id="overview" className="max-w-7xl mx-auto px-5 sm:px-8 py-24 md:py-28">
       <div className="text-center max-w-2xl mx-auto mb-14">
-        <span className="inline-block text-[12px] font-bold tracking-widest text-shopee uppercase mb-3">TỔNG QUAN</span>
-        <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-ink">Công cụ này giải quyết bài toán gì?</h2>
-        <p className="mt-3 text-ink-3 text-[15px]">Thay thế quy trình xếp ca thủ công nhiều bước bằng một hệ thống tính toán tự động, minh bạch và có thể kiểm chứng.</p>
+        <span className="inline-block text-[12px] font-bold tracking-widest text-shopee uppercase mb-3">OVERVIEW</span>
+        <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-ink">What operational challenges does this tool solve?</h2>
+        <p className="mt-3 text-ink-3 text-[15px]">Replaces manual, multi-step scheduling with an automated, transparent, and auditable calculation system.</p>
       </div>
       <div className="grid md:grid-cols-3 gap-6">
         {points.map((p, i) => (
@@ -356,9 +358,9 @@ function Features() {
     <section id="features" className="dashboard-gradient py-24 md:py-28 border-y border-ink/5">
       <div className="max-w-7xl mx-auto px-5 sm:px-8">
         <div className="text-center max-w-2xl mx-auto mb-14">
-          <span className="inline-block text-[12px] font-bold tracking-widest text-shopee uppercase mb-3">TÍNH NĂNG</span>
-          <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-ink">Mọi thứ đội ngũ WFM cần trong một công cụ</h2>
-          <p className="mt-3 text-ink-3 text-[15px]">Từ nhập liệu, tối ưu, đến báo cáo và export — toàn bộ quy trình được tự động hóa bằng AI.</p>
+          <span className="inline-block text-[12px] font-bold tracking-widest text-shopee uppercase mb-3">FEATURES</span>
+          <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-ink">Everything WFM teams need in one suite</h2>
+          <p className="mt-3 text-ink-3 text-[15px]">From data ingestion and optimization to reporting and export — your end-to-end workflow powered by AI.</p>
         </div>
         <div className="grid md:grid-cols-3 gap-6">
           {FEATURES.map((f, i) => {
@@ -384,8 +386,8 @@ function HowItWorks() {
   return (
     <section id="how" className="max-w-7xl mx-auto px-5 sm:px-8 py-24 md:py-28">
       <div className="text-center max-w-2xl mx-auto mb-14">
-        <span className="inline-block text-[12px] font-bold tracking-widest text-shopee uppercase mb-3">CÁCH VẬN HÀNH</span>
-        <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-ink">4 bước từ dữ liệu đến kết quả</h2>
+        <span className="inline-block text-[12px] font-bold tracking-widest text-shopee uppercase mb-3">HOW IT WORKS</span>
+        <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] text-ink">4 steps from raw data to optimized schedules</h2>
       </div>
       <div className="grid md:grid-cols-4 gap-6">
         {HOW_IT_WORKS.map((s, i) => (
@@ -415,15 +417,15 @@ function CTABanner({ onEnterApp }) {
             <IconSparkle size={32} />
           </div>
           <h2 className="text-2xl md:text-4xl font-extrabold text-white leading-tight">
-            Sẵn sàng tối ưu lịch xếp ca của đội ngũ?
+            Ready to optimize your team's shift scheduling?
           </h2>
           <p className="mt-4 text-white/95 text-[15px] font-medium">
-            Đăng nhập bằng tài khoản Google Shopee để bắt đầu sử dụng ngay.
+            Sign in with your Shopee Google account to get started immediately.
           </p>
           <button onClick={onEnterApp}
             style={{'--glow-color':'rgba(255,255,255,.5)', '--glow-color-end':'rgba(255,255,255,0)'}}
             className="animate-pulse-glow mt-8 inline-flex items-center gap-2 bg-white text-shopee hover:bg-shopee-light font-extrabold text-[15px] px-8 py-4 rounded-xl shadow-card transition-all hover:-translate-y-0.5">
-            Vào công cụ ngay <IconArrowRight size={18}/>
+            Launch Tool Now <IconArrowRight size={18}/>
           </button>
         </div>
       </div>
@@ -451,8 +453,6 @@ function Footer() {
 
 /* ═══════════════════════════════ APP ROOT ═══════════════════════════════ */
 function App() {
-  // CTA luôn chuyển thẳng sang /app — không kiểm tra session/OAuth ở Landing,
-  // app thật (/app) tự xử lý auth overlay như logic hiện có.
   const enterApp = () => { window.location.href = '/app'; };
 
   return (
@@ -494,7 +494,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     });
   }
 
-  // ── Parallax cho lớp nền Hero khi cuộn trang ──
+  // ── Parallax ──
   var parallaxTicking = false;
   function updateParallax(){
     var layer = document.getElementById('parallaxLayer');
@@ -508,7 +508,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     if (!parallaxTicking) { requestAnimationFrame(updateParallax); parallaxTicking = true; }
   }, { passive: true });
 
-  // ── 3D tilt hover cho mọi phần tử .tilt-3d ──
+  // ── 3D Tilt Hover ──
   document.addEventListener('mousemove', function(e){
     var card = e.target.closest && e.target.closest('.tilt-3d');
     if (!card) return;
