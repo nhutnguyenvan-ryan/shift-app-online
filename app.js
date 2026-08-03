@@ -8,6 +8,7 @@ let inflowData = {}, enqueueData = {};
 let weekData = [], manualShift = {};
 let weekChart = null, shiftChart = null;
 let historicalData = []; // dữ liệu lịch sử từ tab "Historical Data" (Google Sheet)
+let actualAHTData = [];  // dữ liệu Actual AHT theo tuần, từ tab "Actual AHT" (Google Sheet)
 
 // Canvas (Chart.js) không kế thừa font-family từ CSS → ép font đồng bộ toàn hệ thống
 if (typeof Chart !== 'undefined') {
@@ -126,12 +127,33 @@ function buildShiftExportRows() {
 function buildAbandonWarnings(){
   if(!weekData.length) return [];
   const warnings=[];
+
+  // W0 = tuần ISO chứa ngày đầu tiên đang lên lịch trên ShiftIQ, trừ đi 1.
+  // Actual AHT dùng cho cảnh báo Abandon = AHT của tuần (W0 − 1).
+  // Chỉ ảnh hưởng phần Abandon Alert — Weekly Overview / Daily Detail không đổi.
+  const scheduleWeek = getISOWeek(parseDateStr(weekData[0].dateStr));
+  const w0 = scheduleWeek - 1;
+  const ahtLookupWeek = w0 - 1;
+  const actualAHTRec = actualAHTData.find(r => r.week === ahtLookupWeek);
+
+  const util = parseFloat(document.getElementById('utilInput').value) || 85;
+  const hourProdForWarning = (actualAHTRec && actualAHTRec.aht > 0)
+    ? Math.round(3600 * (util/100) / actualAHTRec.aht)
+    : HOUR_PROD; // fallback: không tìm thấy Actual AHT tương ứng → dùng AHT input hiện tại
+
+  window._abandonWarningMeta = {
+    scheduleWeek, w0, ahtLookupWeek,
+    actualAHT: actualAHTRec ? actualAHTRec.aht : null,
+    hourProdUsed: hourProdForWarning,
+    usingFallback: !actualAHTRec
+  };
+
   weekData.forEach(wd=>{
     const e=getEff(wd.d);
     const abandonTarget=1-wd.eventTarget;
     wd.hourInflows.forEach((inf,h)=>{
       const cov=e.coverage[h]||0;
-      const ab=Math.max(inf-cov*HOUR_PROD,0);
+      const ab=Math.max(inf-cov*hourProdForWarning,0);
       const abPct=inf>0?ab/inf:0;
       if(abPct>abandonTarget){
         warnings.push({
@@ -151,9 +173,14 @@ function renderAbandonWarnings(){
   const wrap=document.getElementById('abandonWarningsWrap');
   if(!wrap)return;
   const warnings=buildAbandonWarnings();
+  const meta=window._abandonWarningMeta||{};
+  const metaNote = meta.actualAHT
+    ? `<div style="padding:8px 18px;font-size:11px;color:var(--text3);border-bottom:1px solid var(--border)">Đang dùng Actual AHT tuần ${meta.ahtLookupWeek}: <strong>${meta.actualAHT}s</strong> (Hour Productivity ${meta.hourProdUsed.toLocaleString()} tasks/agent/h)</div>`
+    : `<div style="padding:8px 18px;font-size:11px;color:var(--amber)">⚠ Không tìm thấy Actual AHT tuần ${meta.ahtLookupWeek} trong tab "Actual AHT" — đang tạm dùng AHT input hiện tại (${HOUR_PROD.toLocaleString()} tasks/agent/h).</div>`;
   if(!warnings.length){
     wrap.innerHTML=`<div class="table-card">
-      <div class="table-card-title">⚠️ Abandon Alerts — Hours Exceeding Target</div>
+      <div class="table-card-title">⚠ Abandon Alerts — Hours Exceeding Target</div>
+      ${metaNote}
       <div style="padding:14px 18px;font-size:12px;color:var(--text3)">Không có khung giờ nào vượt target Abandon trong tuần này.</div>
     </div>`;
     return;
@@ -168,7 +195,8 @@ function renderAbandonWarnings(){
     return `<tr><td><strong>${info.dowLabel} ${dateStr}</strong></td><td>${hoursStr}</td></tr>`;
   }).join('');
   wrap.innerHTML=`<div class="table-card">
-    <div class="table-card-title">⚠️ Abandon Alerts — Hours Exceeding Target</div>
+    <div class="table-card-title">⚠ Abandon Alerts — Hours Exceeding Target</div>
+    ${metaNote}
     <div class="table-scroll"><table class="data-table">
       <thead><tr><th>Ngày</th><th>Khung giờ abandon cao</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -268,7 +296,7 @@ async function loadSharedConfig() {
   if (config.sheetUrlInflow){window._sheetUrlInflow=config.sheetUrlInflow;const el=document.getElementById('sheetUrlInflow');if(el)el.value=config.sheetUrlInflow;}
   if (config.sheetUrlEnqueue){window._sheetUrlEnqueue=config.sheetUrlEnqueue;const el=document.getElementById('sheetUrlEnqueue');if(el)el.value=config.sheetUrlEnqueue;}
   updateDerived();
-  if (window._sheetUrlInflow) fetchHistoricalData();
+  if (window._sheetUrlInflow) { fetchHistoricalData(); fetchActualAHTData(); }
   if (Object.keys(inflowData).length) {
     setStatus('inflow', `✅ Loaded ${Object.keys(inflowData).length} days from saved config`, 'ok');
     calcWeek();
@@ -443,7 +471,7 @@ async function fetchSheetData(type){
     if(!res.ok||json.error)throw new Error(json.error||`HTTP ${res.status}`);
     if(type==='inflow')parseInflowJSON(Array.isArray(json)?json:[json]);
     else parseEnqueueJSON(Array.isArray(json)?json:[json]);
-    if(type==='inflow'){window._sheetUrlInflow=raw;window._sheetNameInflow=sheetName;fetchHistoricalData();}
+    if(type==='inflow'){window._sheetUrlInflow=raw;window._sheetNameInflow=sheetName;fetchHistoricalData();fetchActualAHTData();}
     else{window._sheetUrlEnqueue=raw;window._sheetNameEnqueue=sheetName;}
   }catch(err){
     setStatus(type,`❌ ${err.message}`,'err');
@@ -496,6 +524,23 @@ async function fetchHistoricalData(){
     if(res.ok && Array.isArray(json)) historicalData=json;
   }catch(err){
     console.error('fetchHistoricalData error:', err.message);
+  }
+}
+// ── ACTUAL AHT (dùng riêng cho tính Abandon Alert) ───────────────────────────
+async function fetchActualAHTData(){
+  const raw = window._sheetUrlInflow;
+  if(!raw) return;
+  let spreadsheetId='';
+  const m=raw.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if(m) spreadsheetId=m[1];
+  else if(/^[a-zA-Z0-9_-]{20,}$/.test(raw)) spreadsheetId=raw;
+  if(!spreadsheetId) return;
+  try{
+    const res=await fetch(`/api/fetch-sheet?type=actualAHT&spreadsheetId=${encodeURIComponent(spreadsheetId)}&sheet=${encodeURIComponent('Actual AHT')}`);
+    const json=await res.json();
+    if(res.ok && Array.isArray(json)) actualAHTData=json;
+  }catch(err){
+    console.error('fetchActualAHTData error:', err.message);
   }
 }
 
@@ -721,6 +766,15 @@ function parseDateStr(ds){const p=ds.trim().split('.');return new Date(parseInt(
 function formatDate(dt){return`${String(dt.getDate()).padStart(2,'0')}.${String(dt.getMonth()+1).padStart(2,'0')}.${dt.getFullYear()}`;}
 function addDays(ds,n){const dt=parseDateStr(ds);dt.setDate(dt.getDate()+n);return formatDate(dt);}
 function getDOW(ds){return parseDateStr(ds).getDay();}
+
+// Tính số tuần theo chuẩn ISO 8601 — dùng để tra cứu tab "Actual AHT"
+function getISOWeek(date){
+  const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));
+  const dayNum=d.getUTCDay()||7;
+  d.setUTCDate(d.getUTCDate()+4-dayNum);
+  const yearStart=new Date(Date.UTC(d.getUTCFullYear(),0,1));
+  return Math.ceil((((d-yearStart)/86400000)+1)/7);
+}
 
 const DOW_LABELS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DOW_VN=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
