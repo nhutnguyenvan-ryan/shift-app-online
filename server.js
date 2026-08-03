@@ -213,6 +213,32 @@ async function readHistoricalWide(spreadsheetId, sheetName) {
   return columns;
 }
 
+// ── ĐỌC TAB "Actual AHT" (long-format, header ở ROW 4: Week, Duration, cnt_work, AHT) ──
+async function readActualAHT(spreadsheetId, sheetName) {
+  const token = await getServiceAccountToken('https://www.googleapis.com/auth/spreadsheets.readonly');
+  const { default: fetch } = await import('node-fetch');
+  const range = encodeURIComponent(`${sheetName}!A4:D500`);
+  const url   = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+  const resp  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const data  = await resp.json();
+  if (data.error) throw new Error(`Sheets API: ${data.error.message}`);
+
+  const values = data.values || [];
+  if (values.length < 2) return [];
+  const [headers, ...rows] = values;
+
+  const norm = s => String(s || '').trim().toLowerCase();
+  const idxWeek = headers.findIndex(h => norm(h) === 'week');
+  const idxAHT  = headers.findIndex(h => norm(h) === 'aht');
+  if (idxWeek < 0 || idxAHT < 0) return [];
+
+  const parseNum = v => parseFloat(String(v ?? '0').replace(',', '.')) || 0;
+  return rows
+    .filter(r => r[idxWeek] !== undefined && r[idxWeek] !== '')
+    .map(r => ({ week: parseInt(r[idxWeek], 10), aht: parseNum(r[idxAHT]) }))
+    .filter(r => !isNaN(r.week));
+}
+
 // Parse Spreadsheet ID từ URL hoặc raw ID
 function parseSpreadsheetId(urlOrId) {
   const m = urlOrId.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
@@ -339,7 +365,8 @@ app.get('/api/fetch-sheet', async (req, res) => {
     const type = (req.query.type || 'inflow').toLowerCase();
     const sheetName = req.query.sheet || (
       type === 'enqueue' ? 'Enqueue' :
-      type === 'historical' ? 'Historical Data' : 'Inflow'
+      type === 'historical' ? 'Historical Data' :
+      type === 'actualaht' ? 'Actual AHT' : 'Inflow'
     );
 
     console.log(`fetch-sheet | type:${type} sheet:${sheetName} id:${spreadsheetId}`);
@@ -347,6 +374,11 @@ app.get('/api/fetch-sheet', async (req, res) => {
     if (type === 'historical') {
       const cols = await readHistoricalWide(spreadsheetId, sheetName);
       return res.json(cols);
+    }
+
+    if (type === 'actualaht') {
+      const rowsAHT = await readActualAHT(spreadsheetId, sheetName);
+      return res.json(rowsAHT);
     }
 
     const rows = await readSheet(spreadsheetId, sheetName);
